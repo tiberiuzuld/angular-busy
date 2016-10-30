@@ -49,7 +49,7 @@
     "test": "gulp test"
   },
   "engines": {
-    "node": ">=4.2.1"
+    "node": ">=4.x"
   },
   "homepage": "https://github.io/tiberiuzuld/angular-busy",
   "bugs": {
@@ -60,8 +60,20 @@
     "url": "https://github.com/tiberiuzuld/angular-busy.git"
   },
   "description": "Angular busy2",
+  "keywords": [
+    "angular",
+    "angularjs",
+    "busy",
+    "loading",
+    "angular-busy2",
+    "angular-busy"
+  ],
   "authors": [
     "Tiberiu Zuld"
+  ],
+  "files": [
+    "dist/angular-busy.css",
+    "angular-busy.js"
   ],
   "license": "MIT",
   "ignore": [
