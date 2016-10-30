@@ -65,9 +65,11 @@
   ],
   "license": "MIT",
   "ignore": [
+    "dist/assets",
     "dist/scripts",
     "dist/styles",
     "dist/index.html",
+    "e2e",
     "gulp",
     "src",
     ".bowerrc",
