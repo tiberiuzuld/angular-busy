@@ -73,7 +73,8 @@
   ],
   "files": [
     "dist/angular-busy.css",
-    "angular-busy.js"
+    "dist/angular-busy.js",
+    "index.js"
   ],
   "license": "MIT",
   "ignore": [
