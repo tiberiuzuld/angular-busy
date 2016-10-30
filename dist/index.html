@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html ng-app="angularBusyApp">
+<head>
+  <title>Angular Busy 2 Demo</title>
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <link rel="stylesheet" href="styles/vendor.css">
+
+  <link rel="stylesheet" href="angular-busy.css">
+
+  <link rel="stylesheet" href="styles/app.css">
+
+</head>
+<body ng-controller="IndexController as ctrl" class="layout-column layout-padding ng-cloak">
+
+<div class="github-fork-ribbon-wrapper right">
+  <div class="github-fork-ribbon">
+    <a href="https://github.com/tiberiuzuld/angular-busy">Star on GitHub</a>
+  </div>
+</div>
+<div class="layout-column">
+  <div>
+    <h2>angular-busy2</h2>
+    <p>Show busy/loading indicators on any $http or $resource request, or on any promise.</p>
+  </div>
+  <div class="layout-column layout-gt-md-row layout-align-space-between">
+    <form class="flex layout-column" name="demoForm">
+      <md-subheader>Demo Options</md-subheader>
+      <md-divider></md-divider>
+      <md-input-container>
+        <label for="delayInput">Delay (ms)</label>
+        <input type="number" id="delayInput" name="delayInput" required min="0" ng-model="ctrl.delay">
+      </md-input-container>
+      <md-input-container>
+        <label for="durationInput">Min Duration (ms)</label>
+        <input type="number" id="durationInput" name="durationInput" required min="0" ng-model="ctrl.minDuration">
+      </md-input-container>
+      <md-input-container>
+        <label for="message">Message</label>
+        <input type="text" id="message" name="message" ng-model="ctrl.message">
+      </md-input-container>
+      <md-input-container>
+        <md-checkbox ng-model="ctrl.backdrop" name="backdrop">Show Backdrop</md-checkbox>
+      </md-input-container>
+      <md-input-container>
+        <label for="template">Template Url</label>
+        <md-select id="template" ng-model="ctrl.templateUrl" name="templateUrl">
+          <md-option ng-repeat="template in ctrl.templates track by $index" ng-value="template.url"
+                     ng-bind="::template.label"></md-option>
+        </md-select>
+      </md-input-container>
+      <div class="layout-row layout-align-end-center">
+        <md-button type="submit" class="md-raised md-accent" ng-disabled="demoForm.$invalid" ng-click="ctrl.demo()">
+          Demo
+        </md-button>
+      </div>
+    </form>
+
+    <div class="flex flex-offset-5"
+         cg-busy="{promise:ctrl.promise,templateUrl:ctrl.templateUrl,message:ctrl.message,backdrop:ctrl.backdrop,delay:ctrl.delay,minDuration:ctrl.minDuration}">
+      <md-grid-list md-cols="4" md-row-height="6:1" md-gutter="1px">
+        <md-grid-tile>
+          <b>#</b>
+        </md-grid-tile>
+        <md-grid-tile>
+          <b>First Name</b>
+        </md-grid-tile>
+        <md-grid-tile>
+          <b>Last Name</b>
+        </md-grid-tile>
+        <md-grid-tile>
+          <b>Username</b>
+        </md-grid-tile>
+        <md-grid-tile>
+          <div>1</div>
+        </md-grid-tile>
+        <md-grid-tile>
+          <div>Mark</div>
+        </md-grid-tile>
+        <md-grid-tile>
+          <div>Otto</div>
+        </md-grid-tile>
+        <md-grid-tile>
+          <div>@mdo</div>
+        </md-grid-tile>
+        <md-grid-tile>
+          <div>2</div>
+        </md-grid-tile>
+        <md-grid-tile>
+          <div>Mark</div>
+        </md-grid-tile>
+        <md-grid-tile>
+          <div>Otto</div>
+        </md-grid-tile>
+        <md-grid-tile>
+          <div>@TwBootstrap</div>
+        </md-grid-tile>
+        <md-grid-tile>
+          <div>3</div>
+        </md-grid-tile>
+        <md-grid-tile>
+          <div>Jacob</div>
+        </md-grid-tile>
+        <md-grid-tile>
+          <div>Thornton</div>
+        </md-grid-tile>
+        <md-grid-tile>
+          <div>@fat</div>
+        </md-grid-tile>
+        <md-grid-tile>
+          <div>4</div>
+        </md-grid-tile>
+        <md-grid-tile>
+          <div>Larry</div>
+        </md-grid-tile>
+        <md-grid-tile>
+          <div>the Bird</div>
+        </md-grid-tile>
+        <md-grid-tile>
+          <div>@twitter</div>
+        </md-grid-tile>
+      </md-grid-list>
+    </div>
+  </div>
+</div>
+
+<script src="scripts/vendor.js"></script>
+
+<script src="angular-busy.js"></script>
+
+<script src="scripts/app.js"></script>
+</body>
+</html>
