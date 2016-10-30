@@ -20,7 +20,7 @@
     ];
 
     vm.demo = function () {
-      vm.promise = $http.get('http://httpbin.org/delay/3');
+      vm.promise = $http.get('https://httpbin.org/delay/3');
     };
   }
 })();
