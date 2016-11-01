@@ -20,15 +20,29 @@
     vm.message = 'Please Wait...';
     vm.backdrop = true;
     vm.promise = null;
-    vm.templateUrl = '';
+    vm.templateUrl = undefined;
 
     vm.templates = [
-      {label: 'Standard', url: ''},
+      {label: 'Standard', url: undefined},
       {label: 'Custom', url: 'app/custom-template.html'}
     ];
 
+    vm.promiseTypes = [
+      {id: 0, label: 'Promise', value: $http.get.bind(undefined, 'https://httpbin.org/delay/3')},
+      {id: 1, label: 'Number', value: 1},
+      {id: 2, label: 'Number `falsy`', value: 0},
+      {id: 3, label: 'Boolean', value: true},
+      {id: 4, label: 'Boolean false', value: false}
+    ];
+
+    vm.promiseType = vm.promiseTypes[0];
+
     vm.demo = function () {
-      vm.promise = $http.get('https://httpbin.org/delay/3');
+      if (angular.isFunction(vm.promiseType.value)) {
+        vm.promise = vm.promiseType.value();
+      } else {
+        vm.promise = vm.promiseType.value;
+      }
     };
   }
 })();

@@ -1,6 +1,6 @@
 {
   "name": "angular-busy2",
-  "version": "5.0.0",
+  "version": "5.1.0",
   "main": [
     "dist/angular-busy.js",
     "dist/angular-busy.css"
@@ -40,7 +40,6 @@
     ".eslintrc",
     ".gitignore",
     "gulpfile.js",
-    "index.js",
     "karma.conf.js",
     "protractor.conf.js"
   ]

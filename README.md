@@ -66,7 +66,7 @@ or this:
 <div angular-busy="{promise:myPromise,message:'Loading',backdrop:false,templateUrl:'myAwesomeTemplate.html',delay:300,minDuration:700}"></div>
 ```
 
-* `promise` - Required. The promise (or array of promises) that will cause the busy indicator to show.
+* `promise` - Required. The promise (or array of promises) that will cause the busy indicator to show. Also supports boolean and numbers (truthy values will show loading...)
 * `message` - Optional.  Defaults to 'Please Wait...'.  The message to show in the indicator.  This value may be updated while the promise is active.  The indicator will reflect the updated values as they're changed.
 * `backdrop` - Optional. Boolean, default is true. If true a faded backdrop will be shown behind the progress indicator.
 * `templateUrl` - Optional.  If provided, the given template will be shown in place of the default progress indicatory template.
@@ -99,6 +99,7 @@ Only the values you'd like overridden need to be specified.
 
 
 ## Release History
+ * v5.1.0 - Add CommonJS support. Add boolean and numbers support.
  * v5.0.0 - Compatibility with 1.6.x. Rename to angular-busy.
  * v4.1.3 - Fix for issue #45 and issue #49.
  * v4.1.2 - Small bugs fixed, wrapperClass option added.
