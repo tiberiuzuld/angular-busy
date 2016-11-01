@@ -62,6 +62,13 @@
                      ng-bind="::template.label"></md-option>
         </md-select>
       </md-input-container>
+      <md-input-container>
+        <label for="promiseType">Promise type</label>
+        <md-select id="promiseType" ng-model="ctrl.promiseType" name="promiseType">
+          <md-option ng-repeat="promiseType in ctrl.promiseTypes track by $index" ng-value="promiseType"
+                     ng-bind="::promiseType.label"></md-option>
+        </md-select>
+      </md-input-container>
       <div class="layout-row layout-align-end-center">
         <md-button type="submit" class="md-raised md-accent" ng-disabled="demoForm.$invalid" ng-click="ctrl.demo()">
           Demo
@@ -70,7 +77,7 @@
     </form>
 
     <div class="flex flex-offset-5"
-         cg-busy="{promise:ctrl.promise,templateUrl:ctrl.templateUrl,message:ctrl.message,backdrop:ctrl.backdrop,delay:ctrl.delay,minDuration:ctrl.minDuration}">
+         angular-busy="{promise:ctrl.promise,templateUrl:ctrl.templateUrl,message:ctrl.message,backdrop:ctrl.backdrop,delay:ctrl.delay,minDuration:ctrl.minDuration}">
       <md-grid-list md-cols="4" md-row-height="6:1" md-gutter="1px">
         <md-grid-tile>
           <b>#</b>

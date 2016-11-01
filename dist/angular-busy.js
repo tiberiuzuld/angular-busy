@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  cgBusy.$inject = ["$compile", "$templateRequest", "angularBusyDefaults", "_cgBusyTrackerFactory"];
+  cgBusy.$inject = ["$compile", "$q", "$templateRequest", "angularBusyDefaults", "_cgBusyTrackerFactory"];
   var defaults = {
     templateUrl: 'angular-busy/defaultTemplate.html',
     delay: 0,
@@ -14,13 +14,12 @@
   angular.module('angular-busy', [])
     .constant('angularBusyDefaults', defaults)
     .constant('cgBusyDefaults', defaults)
-    .directive('angular-busy', cgBusy)
+    .directive('angularBusy', cgBusy)
     .directive('cgBusy', cgBusy);
 
 
-
   /** @ngInject */
-  function cgBusy($compile, $templateRequest, angularBusyDefaults, _cgBusyTrackerFactory) {
+  function cgBusy($compile, $q, $templateRequest, angularBusyDefaults, _cgBusyTrackerFactory) {
     return {
       restrict: 'A',
       link: function (scope, element, attrs) {
@@ -42,15 +41,25 @@
           element.append($compile(template)(templateScope));
         });
 
-        scope.$watchCollection(attrs.cgBusy, function (options) {
+        var fakePromise;
 
-          if (!options) {
-            options = {promise: null};
+        scope.$watchCollection(attrs.cgBusy || attrs.angularBusy, function (options) {
+
+          if (!options.hasOwnProperty('promise')) {
+            options = {promise: options};
           }
 
-          //is it an array (of promises) or one promise
-          if (angular.isArray(options) || tracker.isPromise(options)) {
-            options = {promise: options};
+          if (fakePromise) {
+            fakePromise.resolve();
+            fakePromise = undefined;
+          }
+
+          if (angular.isNumber(options.promise) || options.promise === true || options.promise === false) {
+            fakePromise = $q.defer();
+            if (!options.promise) {
+              fakePromise.resolve();
+            }
+            options.promise = fakePromise.promise;
           }
 
           options = angular.extend({}, angularBusyDefaults, options);
@@ -68,13 +77,11 @@
           templateScope.$templateUrl = options.templateUrl;
           templateScope.$wrapperClass = options.wrapperClass;
 
-          if (!angular.equals(tracker.promises, options.promise)) {
-            tracker.reset({
-              promises: options.promise,
-              delay: options.delay,
-              minDuration: options.minDuration
-            });
-          }
+          tracker.reset({
+            promises: options.promise,
+            delay: options.delay,
+            minDuration: options.minDuration
+          });
         }, true);
       }
     };
