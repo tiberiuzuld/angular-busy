@@ -1,6 +1,6 @@
 {
   "name": "angular-busy2",
-  "main": "angular-busy.js",
+  "main": "index.js",
   "version": "5.1.0",
   "devDependencies": {
     "browser-sync": "2.17.5",
@@ -76,22 +76,5 @@
     "dist/angular-busy.js",
     "index.js"
   ],
-  "license": "MIT",
-  "ignore": [
-    "dist/assets",
-    "dist/scripts",
-    "dist/styles",
-    "dist/index.html",
-    "e2e",
-    "gulp",
-    "src",
-    ".bowerrc",
-    ".editorconfig",
-    ".eslintrc",
-    ".gitignore",
-    ".yo-rc.json",
-    "gulpfile.js",
-    "karma.conf.js",
-    "protractor.conf.js"
-  ]
+  "license": "MIT"
 }
