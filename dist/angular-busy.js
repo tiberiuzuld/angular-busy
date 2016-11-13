@@ -45,7 +45,7 @@
 
         scope.$watchCollection(attrs.cgBusy || attrs.angularBusy, function (options) {
 
-          if (!options.hasOwnProperty('promise')) {
+          if (!options || !options.hasOwnProperty('promise')) {
             options = {promise: options};
           }
 
