@@ -18,6 +18,7 @@ Install with Bower or download the files directly from the dist folder in the re
 
 ```bash
 bower install angular-busy2 --save
+npm install angular-busy2 --save
 ```
 
 Add `dist/angular-busy.js` and `dist/angular-busy.css` to your index.html.
