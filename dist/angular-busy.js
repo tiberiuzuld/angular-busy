@@ -141,7 +141,7 @@
 
       tracker.isPromise = function (promiseThing) {
         var then = promiseThing && (promiseThing.then || promiseThing.$then ||
-          (promiseThing.$promise && promiseThing.$promise.then));
+          (promiseThing.$promise && promiseThing.$promise.then) || (promiseThing.promise && promiseThing.promise.then));
 
         return typeof then !== 'undefined';
       };
@@ -152,6 +152,8 @@
           promise = promiseThing;
         } else if (promiseThing.$promise) {
           promise = promiseThing.$promise;
+        } else if (promiseThing.promise) {
+          promise = promiseThing.promise;
         } else if (promiseThing.denodeify) {
           promise = $q.when(promiseThing);
         }
