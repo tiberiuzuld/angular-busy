@@ -100,6 +100,8 @@ Only the values you'd like overridden need to be specified.
 
 
 ## Release History
+ * v5.2.0 - Add support for direct use of $q.defer()
+ * v5.1.1 - Fix bug when promise undefined.
  * v5.1.0 - Add CommonJS support. Add boolean and numbers support.
  * v5.0.0 - Compatibility with 1.6.x. Rename to angular-busy.
  * v4.1.3 - Fix for issue #45 and issue #49.

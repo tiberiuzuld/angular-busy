@@ -1,7 +1,7 @@
 {
   "name": "angular-busy2",
   "main": "index.js",
-  "version": "5.1.1",
+  "version": "5.2.0",
   "devDependencies": {
     "browser-sync": "2.17.5",
     "browser-sync-spa": "1.0.3",

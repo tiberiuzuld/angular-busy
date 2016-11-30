@@ -1,6 +1,6 @@
 {
   "name": "angular-busy2",
-  "version": "5.1.1",
+  "version": "5.2.0",
   "main": [
     "dist/angular-busy.js",
     "dist/angular-busy.css"
