@@ -100,6 +100,7 @@ Only the values you'd like overridden need to be specified.
 
 
 ## Release History
+ * v5.2.1 - Fix issue adding position relative on a position absolute element
  * v5.2.0 - Add support for direct use of $q.defer()
  * v5.1.1 - Fix bug when promise undefined.
  * v5.1.0 - Add CommonJS support. Add boolean and numbers support.

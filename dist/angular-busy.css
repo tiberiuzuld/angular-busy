@@ -13,6 +13,10 @@
   text-align: center;
 }
 
+[cg-busy], [angular-busy] {
+  position: relative;
+}
+
 .cg-busy-animation.ng-hide-add,
 .cg-busy-animation.ng-hide-remove {
   transition: all .3s ease;

@@ -24,12 +24,6 @@
       restrict: 'A',
       link: function (scope, element, attrs) {
 
-        //Apply position:relative to parent element if necessary
-        var position = element.css('position');
-        if (position === 'static' || position === '' || typeof position === 'undefined') {
-          element.css('position', 'relative');
-        }
-
         var templateScope;
         var tracker = _cgBusyTrackerFactory();
 
