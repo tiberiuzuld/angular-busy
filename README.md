@@ -1,5 +1,10 @@
 # angular-busy2
 
+ [![npm version](https://badge.fury.io/js/angular-busy2.svg)](https://badge.fury.io/js/angular-busy2)
+[![dependencies Status](https://david-dm.org/tiberiuzuld/angular-busy2/status.svg)](https://david-dm.org/tiberiuzuld/angular-busy2)
+[![devDependencies Status](https://david-dm.org/tiberiuzuld/angular-busy2/dev-status.svg)](https://david-dm.org/tiberiuzuld/angular-busy2?type=dev)
+[![downloads](https://img.shields.io/npm/dm/angular-busy2.svg)](https://www.npmjs.com/package/angular-busy2)
+
 > Show busy/loading indicators on any $http or $resource request, or on any promise.
 
 > Fork from original angular-busy (cgBusy) https://github.com/cgross/angular-busy  
