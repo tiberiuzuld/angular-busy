@@ -1,7 +1,10 @@
 (function () {
   'use strict';
 
-  angular.module('angularBusyApp').controller('IndexController', IndexController);
+  angular.module('angularBusyApp').component('main', {
+    templateUrl: 'app/main.html',
+    controller: IndexController
+  });
 
   /** @ngInject */
   function IndexController($http, $q) {

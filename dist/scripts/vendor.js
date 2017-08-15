@@ -1,9 +1,59 @@
 /**
- * @license AngularJS v1.6.2
+ * @license AngularJS v1.6.5
  * (c) 2010-2017 Google, Inc. http://angularjs.org
  * License: MIT
  */
 (function(window) {'use strict';
+
+/* exported
+  minErrConfig,
+  errorHandlingConfig,
+  isValidObjectMaxDepth
+*/
+
+var minErrConfig = {
+  objectMaxDepth: 5
+};
+
+/**
+ * @ngdoc function
+ * @name angular.errorHandlingConfig
+ * @module ng
+ * @kind function
+ *
+ * @description
+ * Configure several aspects of error handling in AngularJS if used as a setter or return the
+ * current configuration if used as a getter. The following options are supported:
+ *
+ * - **objectMaxDepth**: The maximum depth to which objects are traversed when stringified for error messages.
+ *
+ * Omitted or undefined options will leave the corresponding configuration values unchanged.
+ *
+ * @param {Object=} config - The configuration object. May only contain the options that need to be
+ *     updated. Supported keys:
+ *
+ * * `objectMaxDepth`  **{Number}** - The max depth for stringifying objects. Setting to a
+ *   non-positive or non-numeric value, removes the max depth limit.
+ *   Default: 5
+ */
+function errorHandlingConfig(config) {
+  if (isObject(config)) {
+    if (isDefined(config.objectMaxDepth)) {
+      minErrConfig.objectMaxDepth = isValidObjectMaxDepth(config.objectMaxDepth) ? config.objectMaxDepth : NaN;
+    }
+  } else {
+    return minErrConfig;
+  }
+}
+
+/**
+ * @private
+ * @param {Number} maxDepth
+ * @return {boolean}
+ */
+function isValidObjectMaxDepth(maxDepth) {
+  return isNumber(maxDepth) && maxDepth > 0;
+}
 
 /**
  * @description
@@ -38,31 +88,29 @@
 function minErr(module, ErrorConstructor) {
   ErrorConstructor = ErrorConstructor || Error;
   return function() {
-    var SKIP_INDEXES = 2;
-
-    var templateArgs = arguments,
-      code = templateArgs[0],
+    var code = arguments[0],
+      template = arguments[1],
       message = '[' + (module ? module + ':' : '') + code + '] ',
-      template = templateArgs[1],
+      templateArgs = sliceArgs(arguments, 2).map(function(arg) {
+        return toDebugString(arg, minErrConfig.objectMaxDepth);
+      }),
       paramPrefix, i;
 
     message += template.replace(/\{\d+\}/g, function(match) {
-      var index = +match.slice(1, -1),
-        shiftedIndex = index + SKIP_INDEXES;
+      var index = +match.slice(1, -1);
 
-      if (shiftedIndex < templateArgs.length) {
-        return toDebugString(templateArgs[shiftedIndex]);
+      if (index < templateArgs.length) {
+        return templateArgs[index];
       }
 
       return match;
     });
 
-    message += '\nhttp://errors.angularjs.org/1.6.2/' +
+    message += '\nhttp://errors.angularjs.org/1.6.5/' +
       (module ? module + '/' : '') + code;
 
-    for (i = SKIP_INDEXES, paramPrefix = '?'; i < templateArgs.length; i++, paramPrefix = '&') {
-      message += paramPrefix + 'p' + (i - SKIP_INDEXES) + '=' +
-        encodeURIComponent(toDebugString(templateArgs[i]));
+    for (i = 0, paramPrefix = '?'; i < templateArgs.length; i++, paramPrefix = '&') {
+      message += paramPrefix + 'p' + i + '=' + encodeURIComponent(templateArgs[i]);
     }
 
     return new ErrorConstructor(message);
@@ -79,6 +127,9 @@ function minErr(module, ErrorConstructor) {
   splice,
   push,
   toString,
+  minErrConfig,
+  errorHandlingConfig,
+  isValidObjectMaxDepth,
   ngMinErr,
   angularModule,
   uid,
@@ -111,6 +162,7 @@ function minErr(module, ErrorConstructor) {
   isNumber,
   isNumberNaN,
   isDate,
+  isError,
   isArray,
   isFunction,
   isRegExp,
@@ -128,6 +180,7 @@ function minErr(module, ErrorConstructor) {
   includes,
   arrayRemove,
   copy,
+  simpleCompare,
   equals,
   csp,
   jq,
@@ -501,6 +554,20 @@ function extend(dst) {
 * Unlike {@link angular.extend extend()}, `merge()` recursively descends into object properties of source
 * objects, performing a deep copy.
 *
+* @deprecated
+* sinceVersion="1.6.5"
+* This function is deprecated, but will not be removed in the 1.x lifecycle.
+* There are edge cases (see {@link angular.merge#known-issues known issues}) that are not
+* supported by this function. We suggest
+* using [lodash's merge()](https://lodash.com/docs/4.17.4#merge) instead.
+*
+* @knownIssue
+* This is a list of (known) object types that are not handled correctly by this function:
+* - [`Blob`](https://developer.mozilla.org/docs/Web/API/Blob)
+* - [`MediaStream`](https://developer.mozilla.org/docs/Web/API/MediaStream)
+* - [`CanvasGradient`](https://developer.mozilla.org/docs/Web/API/CanvasGradient)
+* - AngularJS {@link $rootScope.Scope scopes};
+*
 * @param {Object} dst Destination object.
 * @param {...Object} src Source object(s).
 * @returns {Object} Reference to `dst`.
@@ -711,6 +778,24 @@ function isDate(value) {
 var isArray = Array.isArray;
 
 /**
+ * @description
+ * Determines if a reference is an `Error`.
+ * Loosely based on https://www.npmjs.com/package/iserror
+ *
+ * @param {*} value Reference to check.
+ * @returns {boolean} True if `value` is an `Error`.
+ */
+function isError(value) {
+  var tag = toString.call(value);
+  switch (tag) {
+    case '[object Error]': return true;
+    case '[object Exception]': return true;
+    case '[object DOMException]': return true;
+    default: return value instanceof Error;
+  }
+}
+
+/**
  * @ngdoc function
  * @name angular.isFunction
  * @module ng
@@ -916,9 +1001,10 @@ function arrayRemove(array, value) {
     </file>
   </example>
  */
-function copy(source, destination) {
+function copy(source, destination, maxDepth) {
   var stackSource = [];
   var stackDest = [];
+  maxDepth = isValidObjectMaxDepth(maxDepth) ? maxDepth : NaN;
 
   if (destination) {
     if (isTypedArray(destination) || isArrayBuffer(destination)) {
@@ -941,35 +1027,39 @@ function copy(source, destination) {
 
     stackSource.push(source);
     stackDest.push(destination);
-    return copyRecurse(source, destination);
+    return copyRecurse(source, destination, maxDepth);
   }
 
-  return copyElement(source);
+  return copyElement(source, maxDepth);
 
-  function copyRecurse(source, destination) {
+  function copyRecurse(source, destination, maxDepth) {
+    maxDepth--;
+    if (maxDepth < 0) {
+      return '...';
+    }
     var h = destination.$$hashKey;
     var key;
     if (isArray(source)) {
       for (var i = 0, ii = source.length; i < ii; i++) {
-        destination.push(copyElement(source[i]));
+        destination.push(copyElement(source[i], maxDepth));
       }
     } else if (isBlankObject(source)) {
       // createMap() fast path --- Safe to avoid hasOwnProperty check because prototype chain is empty
       for (key in source) {
-        destination[key] = copyElement(source[key]);
+        destination[key] = copyElement(source[key], maxDepth);
       }
     } else if (source && typeof source.hasOwnProperty === 'function') {
       // Slow path, which must rely on hasOwnProperty
       for (key in source) {
         if (source.hasOwnProperty(key)) {
-          destination[key] = copyElement(source[key]);
+          destination[key] = copyElement(source[key], maxDepth);
         }
       }
     } else {
       // Slowest path --- hasOwnProperty can't be called as a method
       for (key in source) {
         if (hasOwnProperty.call(source, key)) {
-          destination[key] = copyElement(source[key]);
+          destination[key] = copyElement(source[key], maxDepth);
         }
       }
     }
@@ -977,7 +1067,7 @@ function copy(source, destination) {
     return destination;
   }
 
-  function copyElement(source) {
+  function copyElement(source, maxDepth) {
     // Simple values
     if (!isObject(source)) {
       return source;
@@ -1006,7 +1096,7 @@ function copy(source, destination) {
     stackDest.push(destination);
 
     return needsRecurse
-      ? copyRecurse(source, destination)
+      ? copyRecurse(source, destination, maxDepth)
       : destination;
   }
 
@@ -1055,6 +1145,10 @@ function copy(source, destination) {
     }
   }
 }
+
+
+// eslint-disable-next-line no-self-compare
+function simpleCompare(a, b) { return a === b || (a !== a && b !== b); }
 
 
 /**
@@ -1137,7 +1231,7 @@ function equals(o1, o2) {
       }
     } else if (isDate(o1)) {
       if (!isDate(o2)) return false;
-      return equals(o1.getTime(), o2.getTime());
+      return simpleCompare(o1.getTime(), o2.getTime());
     } else if (isRegExp(o1)) {
       if (!isRegExp(o2)) return false;
       return o1.toString() === o2.toString();
@@ -1381,7 +1475,7 @@ function fromJson(json) {
 
 var ALL_COLONS = /:/g;
 function timezoneToOffset(timezone, fallback) {
-  // Support: IE 9-11 only, Edge 13-14+
+  // Support: IE 9-11 only, Edge 13-15+
   // IE/Edge do not "understand" colon (`:`) in timezone
   timezone = timezone.replace(ALL_COLONS, '');
   var requestedTimezoneOffset = Date.parse('Jan 01, 1970 00:00:00 ' + timezone) / 60000;
@@ -1408,12 +1502,7 @@ function convertTimezoneToLocal(date, timezone, reverse) {
  * @returns {string} Returns the string representation of the element.
  */
 function startingTag(element) {
-  element = jqLite(element).clone();
-  try {
-    // turns out IE does not let you set .html() on elements which
-    // are not allowed to have children. So we just ignore it.
-    element.empty();
-  } catch (e) { /* empty */ }
+  element = jqLite(element).clone().empty();
   var elemHtml = jqLite('<div>').append(element).html();
   try {
     return element[0].nodeType === NODE_TYPE_TEXT ? lowercase(elemHtml) :
@@ -1549,33 +1638,51 @@ function getNgAttribute(element, ngAttr) {
 
 function allowAutoBootstrap(document) {
   var script = document.currentScript;
-  var src = script && script.getAttribute('src');
 
-  if (!src) {
+  if (!script) {
+    // Support: IE 9-11 only
+    // IE does not have `document.currentScript`
     return true;
   }
 
-  var link = document.createElement('a');
-  link.href = src;
-
-  if (document.location.origin === link.origin) {
-    // Same-origin resources are always allowed, even for non-whitelisted schemes.
-    return true;
+  // If the `currentScript` property has been clobbered just return false, since this indicates a probable attack
+  if (!(script instanceof window.HTMLScriptElement || script instanceof window.SVGScriptElement)) {
+    return false;
   }
-  // Disabled bootstrapping unless angular.js was loaded from a known scheme used on the web.
-  // This is to prevent angular.js bundled with browser extensions from being used to bypass the
-  // content security policy in web pages and other browser extensions.
-  switch (link.protocol) {
-    case 'http:':
-    case 'https:':
-    case 'ftp:':
-    case 'blob:':
-    case 'file:':
-    case 'data:':
+
+  var attributes = script.attributes;
+  var srcs = [attributes.getNamedItem('src'), attributes.getNamedItem('href'), attributes.getNamedItem('xlink:href')];
+
+  return srcs.every(function(src) {
+    if (!src) {
       return true;
-    default:
+    }
+    if (!src.value) {
       return false;
-  }
+    }
+
+    var link = document.createElement('a');
+    link.href = src.value;
+
+    if (document.location.origin === link.origin) {
+      // Same-origin resources are always allowed, even for non-whitelisted schemes.
+      return true;
+    }
+    // Disabled bootstrapping unless angular.js was loaded from a known scheme used on the web.
+    // This is to prevent angular.js bundled with browser extensions from being used to bypass the
+    // content security policy in web pages and other browser extensions.
+    switch (link.protocol) {
+      case 'http:':
+      case 'https:':
+      case 'ftp:':
+      case 'blob:':
+      case 'file:':
+      case 'data:':
+        return true;
+      default:
+        return false;
+    }
+  });
 }
 
 // Cached as it has to run during loading so that document.currentScript is available.
@@ -2172,6 +2279,9 @@ function setupModuleLoader(window) {
      * @returns {angular.Module} new module with the {@link angular.Module} api.
      */
     return function module(name, requires, configFn) {
+
+      var info = {};
+
       var assertNotHasOwnProperty = function(name, context) {
         if (name === 'hasOwnProperty') {
           throw ngMinErr('badname', 'hasOwnProperty is not a valid {0} name', context);
@@ -2206,6 +2316,45 @@ function setupModuleLoader(window) {
           _invokeQueue: invokeQueue,
           _configBlocks: configBlocks,
           _runBlocks: runBlocks,
+
+          /**
+           * @ngdoc method
+           * @name angular.Module#info
+           * @module ng
+           *
+           * @param {Object=} info Information about the module
+           * @returns {Object|Module} The current info object for this module if called as a getter,
+           *                          or `this` if called as a setter.
+           *
+           * @description
+           * Read and write custom information about this module.
+           * For example you could put the version of the module in here.
+           *
+           * ```js
+           * angular.module('myModule', []).info({ version: '1.0.0' });
+           * ```
+           *
+           * The version could then be read back out by accessing the module elsewhere:
+           *
+           * ```
+           * var version = angular.module('myModule').info().version;
+           * ```
+           *
+           * You can also retrieve this information during runtime via the
+           * {@link $injector#modules `$injector.modules`} property:
+           *
+           * ```js
+           * var version = $injector.modules['myModule'].info().version;
+           * ```
+           */
+          info: function(value) {
+            if (isDefined(value)) {
+              if (!isObject(value)) throw ngMinErr('aobj', 'Argument \'{0}\' must be an object', 'value');
+              info = value;
+              return this;
+            }
+            return info;
+          },
 
           /**
            * @ngdoc property
@@ -2483,11 +2632,19 @@ function shallowCopy(src, dst) {
   return dst || src;
 }
 
-/* global toDebugString: true */
+/* exported toDebugString */
 
-function serializeObject(obj) {
+function serializeObject(obj, maxDepth) {
   var seen = [];
 
+  // There is no direct way to stringify object until reaching a specific depth
+  // and a very deep object can cause a performance issue, so we copy the object
+  // based on this specific depth and then stringify it.
+  if (isValidObjectMaxDepth(maxDepth)) {
+    // This file is also included in `angular-loader`, so `copy()` might not always be available in
+    // the closure. Therefore, it is lazily retrieved as `angular.copy()` when needed.
+    obj = angular.copy(obj, null, maxDepth);
+  }
   return JSON.stringify(obj, function(key, val) {
     val = toJsonReplacer(key, val);
     if (isObject(val)) {
@@ -2500,13 +2657,13 @@ function serializeObject(obj) {
   });
 }
 
-function toDebugString(obj) {
+function toDebugString(obj, maxDepth) {
   if (typeof obj === 'function') {
     return obj.toString().replace(/ \{[\s\S]*$/, '');
   } else if (isUndefined(obj)) {
     return 'undefined';
   } else if (typeof obj !== 'string') {
-    return serializeObject(obj);
+    return serializeObject(obj, maxDepth);
   }
   return obj;
 }
@@ -2627,16 +2784,17 @@ function toDebugString(obj) {
 var version = {
   // These placeholder strings will be replaced by grunt's `build` task.
   // They need to be double- or single-quoted.
-  full: '1.6.2',
+  full: '1.6.5',
   major: 1,
   minor: 6,
-  dot: 2,
-  codeName: 'llamacorn-lovehug'
+  dot: 5,
+  codeName: 'toffee-salinization'
 };
 
 
 function publishExternalAPI(angular) {
   extend(angular, {
+    'errorHandlingConfig': errorHandlingConfig,
     'bootstrap': bootstrap,
     'copy': copy,
     'extend': extend,
@@ -2775,7 +2933,8 @@ function publishExternalAPI(angular) {
         $$cookieReader: $$CookieReaderProvider
       });
     }
-  ]);
+  ])
+  .info({ angularVersion: '1.6.5' });
 }
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
@@ -2979,12 +3138,6 @@ function jqLiteHasData(node) {
   return false;
 }
 
-function jqLiteCleanData(nodes) {
-  for (var i = 0, ii = nodes.length; i < ii; i++) {
-    jqLiteRemoveData(nodes[i]);
-  }
-}
-
 function jqLiteBuildFragment(html, context) {
   var tmp, tag, wrap,
       fragment = context.createDocumentFragment(),
@@ -3087,13 +3240,10 @@ function jqLiteClone(element) {
 }
 
 function jqLiteDealoc(element, onlyDescendants) {
-  if (!onlyDescendants) jqLiteRemoveData(element);
+  if (!onlyDescendants && jqLiteAcceptsData(element)) jqLite.cleanData([element]);
 
   if (element.querySelectorAll) {
-    var descendants = element.querySelectorAll('*');
-    for (var i = 0, l = descendants.length; i < l; i++) {
-      jqLiteRemoveData(descendants[i]);
-    }
+    jqLite.cleanData(element.querySelectorAll('*'));
   }
 }
 
@@ -3391,7 +3541,11 @@ forEach({
   data: jqLiteData,
   removeData: jqLiteRemoveData,
   hasData: jqLiteHasData,
-  cleanData: jqLiteCleanData
+  cleanData: function jqLiteCleanData(nodes) {
+    for (var i = 0, ii = nodes.length; i < ii; i++) {
+      jqLiteRemoveData(nodes[i]);
+    }
+  }
 }, function(fn, name) {
   JQLite[name] = fn;
 });
@@ -4167,6 +4321,28 @@ function annotate(fn, strictDi, name) {
  */
 
 /**
+ * @ngdoc property
+ * @name $injector#modules
+ * @type {Object}
+ * @description
+ * A hash containing all the modules that have been loaded into the
+ * $injector.
+ *
+ * You can use this property to find out information about a module via the
+ * {@link angular.Module#info `myModule.info(...)`} method.
+ *
+ * For example:
+ *
+ * ```
+ * var info = $injector.modules['ngAnimate'].info();
+ * ```
+ *
+ * **Do not use this property to attempt to modify the modules after the application
+ * has been bootstrapped.**
+ */
+
+
+/**
  * @ngdoc method
  * @name $injector#get
  *
@@ -4659,6 +4835,7 @@ function createInjector(modulesToLoad, strictDi) {
       instanceInjector = protoInstanceInjector;
 
   providerCache['$injector' + providerSuffix] = { $get: valueFn(protoInstanceInjector) };
+  instanceInjector.modules = providerInjector.modules = createMap();
   var runBlocks = loadModules(modulesToLoad);
   instanceInjector = protoInstanceInjector.get('$injector');
   instanceInjector.strictDi = strictDi;
@@ -4754,6 +4931,7 @@ function createInjector(modulesToLoad, strictDi) {
       try {
         if (isString(module)) {
           moduleFn = angularModule(module);
+          instanceInjector.modules[module] = moduleFn;
           runBlocks = runBlocks.concat(loadModules(moduleFn.requires)).concat(moduleFn._runBlocks);
           runInvokeQueue(moduleFn._invokeQueue);
           runInvokeQueue(moduleFn._configBlocks);
@@ -5344,6 +5522,8 @@ var $$CoreAnimateQueueProvider = /** @this */ function() {
  */
 var $AnimateProvider = ['$provide', /** @this */ function($provide) {
   var provider = this;
+  var classNameFilter = null;
+  var customFilter = null;
 
   this.$$registeredAnimations = Object.create(null);
 
@@ -5398,6 +5578,51 @@ var $AnimateProvider = ['$provide', /** @this */ function($provide) {
 
   /**
    * @ngdoc method
+   * @name $animateProvider#customFilter
+   *
+   * @description
+   * Sets and/or returns the custom filter function that is used to "filter" animations, i.e.
+   * determine if an animation is allowed or not. When no filter is specified (the default), no
+   * animation will be blocked. Setting the `customFilter` value will only allow animations for
+   * which the filter function's return value is truthy.
+   *
+   * This allows to easily create arbitrarily complex rules for filtering animations, such as
+   * allowing specific events only, or enabling animations on specific subtrees of the DOM, etc.
+   * Filtering animations can also boost performance for low-powered devices, as well as
+   * applications containing a lot of structural operations.
+   *
+   * <div class="alert alert-success">
+   *   **Best Practice:**
+   *   Keep the filtering function as lean as possible, because it will be called for each DOM
+   *   action (e.g. insertion, removal, class change) performed by "animation-aware" directives.
+   *   See {@link guide/animations#which-directives-support-animations- here} for a list of built-in
+   *   directives that support animations.
+   *   Performing computationally expensive or time-consuming operations on each call of the
+   *   filtering function can make your animations sluggish.
+   * </div>
+   *
+   * **Note:** If present, `customFilter` will be checked before
+   * {@link $animateProvider#classNameFilter classNameFilter}.
+   *
+   * @param {Function=} filterFn - The filter function which will be used to filter all animations.
+   *   If a falsy value is returned, no animation will be performed. The function will be called
+   *   with the following arguments:
+   *   - **node** `{DOMElement}` - The DOM element to be animated.
+   *   - **event** `{String}` - The name of the animation event (e.g. `enter`, `leave`, `addClass`
+   *     etc).
+   *   - **options** `{Object}` - A collection of options/styles used for the animation.
+   * @return {Function} The current filter function or `null` if there is none set.
+   */
+  this.customFilter = function(filterFn) {
+    if (arguments.length === 1) {
+      customFilter = isFunction(filterFn) ? filterFn : null;
+    }
+
+    return customFilter;
+  };
+
+  /**
+   * @ngdoc method
    * @name $animateProvider#classNameFilter
    *
    * @description
@@ -5407,20 +5632,26 @@ var $AnimateProvider = ['$provide', /** @this */ function($provide) {
    * When setting the `classNameFilter` value, animations will only be performed on elements
    * that successfully match the filter expression. This in turn can boost performance
    * for low-powered devices as well as applications containing a lot of structural operations.
+   *
+   * **Note:** If present, `classNameFilter` will be checked after
+   * {@link $animateProvider#customFilter customFilter}. If `customFilter` is present and returns
+   * false, `classNameFilter` will not be checked.
+   *
    * @param {RegExp=} expression The className expression which will be checked against all animations
    * @return {RegExp} The current CSS className expression value. If null then there is no expression value
    */
   this.classNameFilter = function(expression) {
     if (arguments.length === 1) {
-      this.$$classNameFilter = (expression instanceof RegExp) ? expression : null;
-      if (this.$$classNameFilter) {
-        var reservedRegex = new RegExp('(\\s+|\\/)' + NG_ANIMATE_CLASSNAME + '(\\s+|\\/)');
-        if (reservedRegex.test(this.$$classNameFilter.toString())) {
-          throw $animateMinErr('nongcls','$animateProvider.classNameFilter(regex) prohibits accepting a regex value which matches/contains the "{0}" CSS class.', NG_ANIMATE_CLASSNAME);
+      classNameFilter = (expression instanceof RegExp) ? expression : null;
+      if (classNameFilter) {
+        var reservedRegex = new RegExp('[(\\s|\\/)]' + NG_ANIMATE_CLASSNAME + '[(\\s|\\/)]');
+        if (reservedRegex.test(classNameFilter.toString())) {
+          classNameFilter = null;
+          throw $animateMinErr('nongcls', '$animateProvider.classNameFilter(regex) prohibits accepting a regex value which matches/contains the "{0}" CSS class.', NG_ANIMATE_CLASSNAME);
         }
       }
     }
-    return this.$$classNameFilter;
+    return classNameFilter;
   };
 
   this.$get = ['$$animateQueue', function($$animateQueue) {
@@ -6338,8 +6569,8 @@ function Browser(window, document, $log, $sniffer) {
   self.onUrlChange = function(callback) {
     // TODO(vojta): refactor to use node's syntax for events
     if (!urlChangeInit) {
-      // We listen on both (hashchange/popstate) when available, as some browsers (e.g. Opera)
-      // don't fire popstate when user change the address bar and don't fire hashchange when url
+      // We listen on both (hashchange/popstate) when available, as some browsers don't
+      // fire popstate when user changes the address bar and don't fire hashchange when url
       // changed by push/replaceState
 
       // html5 history api - popstate event
@@ -7128,10 +7359,12 @@ function $TemplateCacheProvider() {
  * the directive's element. If multiple directives on the same element request a new scope,
  * only one new scope is created.
  *
- * * **`{...}` (an object hash):** A new "isolate" scope is created for the directive's element. The
- * 'isolate' scope differs from normal scope in that it does not prototypically inherit from its parent
- * scope. This is useful when creating reusable components, which should not accidentally read or modify
- * data in the parent scope.
+ * * **`{...}` (an object hash):** A new "isolate" scope is created for the directive's template.
+ * The 'isolate' scope differs from normal scope in that it does not prototypically
+ * inherit from its parent scope. This is useful when creating reusable components, which should not
+ * accidentally read or modify data in the parent scope. Note that an isolate scope
+ * directive without a `template` or `templateUrl` will not apply the isolate scope
+ * to its children elements.
  *
  * The 'isolate' scope object hash defines a set of local scope properties derived from attributes on the
  * directive's element. These local properties are useful for aliasing values for templates. The keys in
@@ -7224,9 +7457,9 @@ function $TemplateCacheProvider() {
  * initialized.
  *
  * <div class="alert alert-warning">
- * **Deprecation warning:** although bindings for non-ES6 class controllers are currently
- * bound to `this` before the controller constructor is called, this use is now deprecated. Please place initialization
- * code that relies upon bindings inside a `$onInit` method on the controller, instead.
+ * **Deprecation warning:** if `$compileProcvider.preAssignBindingsEnabled(true)` was called, bindings for non-ES6 class
+ * controllers are bound to `this` before the controller constructor is called but this use is now deprecated. Please
+ * place initialization code that relies upon bindings inside a `$onInit` method on the controller, instead.
  * </div>
  *
  * It is also possible to set `bindToController` to an object hash with the same format as the `scope` property.
@@ -7993,7 +8226,8 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
    * @ngdoc method
    * @name $compileProvider#component
    * @module ng
-   * @param {string} name Name of the component in camelCase (i.e. `myComp` which will match `<my-comp>`)
+   * @param {string|Object} name Name of the component in camelCase (i.e. `myComp` which will match `<my-comp>`),
+   *    or an object map of components where the keys are the names and the values are the component definition objects.
    * @param {Object} options Component definition object (a simplified
    *    {@link ng.$compile#directive-definition-object directive definition object}),
    *    with the following properties (all optional):
@@ -8076,6 +8310,11 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
    * See also {@link ng.$compileProvider#directive $compileProvider.directive()}.
    */
   this.component = function registerComponent(name, options) {
+    if (!isString(name)) {
+      forEach(name, reverseParams(bind(this, registerComponent)));
+      return this;
+    }
+
     var controller = options.controller || function() {};
 
     function factory($injector) {
@@ -8239,7 +8478,14 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
    *
    * If disabled (false), the compiler calls the constructor first before assigning bindings.
    *
-   * The default value is true in Angular 1.5.x but will switch to false in Angular 1.6.x.
+   * The default value is false.
+   *
+   * @deprecated
+   * sinceVersion="1.6.0"
+   * removeVersion="1.7.0"
+   *
+   * This method and the option to assign the bindings before calling the controller's constructor
+   * will be removed in v1.7.0.
    */
   var preAssignBindingsEnabled = false;
   this.preAssignBindingsEnabled = function(enabled) {
@@ -10004,7 +10250,7 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
           }
           linkQueue = null;
         }).catch(function(error) {
-          if (error instanceof Error) {
+          if (isError(error)) {
             $exceptionHandler(error);
           }
         });
@@ -10329,8 +10575,7 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
             if (parentGet.literal) {
               compare = equals;
             } else {
-              // eslint-disable-next-line no-self-compare
-              compare = function simpleCompare(a, b) { return a === b || (a !== a && b !== b); };
+              compare = simpleCompare;
             }
             parentSet = parentGet.assign || function() {
               // reset the change, or we will throw this exception on every $digest
@@ -10405,9 +10650,7 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
       });
 
       function recordChanges(key, currentValue, previousValue) {
-        if (isFunction(destination.$onChanges) && currentValue !== previousValue &&
-            // eslint-disable-next-line no-self-compare
-            (currentValue === currentValue || previousValue === previousValue)) {
+        if (isFunction(destination.$onChanges) && !simpleCompare(currentValue, previousValue)) {
           // If we have not already scheduled the top level onChangesQueue handler then do so now
           if (!onChangesQueue) {
             scope.$$postDigest(flushOnChangesQueue);
@@ -11022,7 +11265,12 @@ function defaultHttpResponseTransform(data, headers) {
     if (tempData) {
       var contentType = headers('Content-Type');
       if ((contentType && (contentType.indexOf(APPLICATION_JSON) === 0)) || isJsonLike(tempData)) {
-        data = fromJson(tempData);
+        try {
+          data = fromJson(tempData);
+        } catch (e) {
+          throw $httpMinErr('baddata', 'Data must be a valid JSON object. Received: "{0}". ' +
+          'Parse error: "{1}"', data, e);
+        }
       }
     }
   }
@@ -11145,12 +11393,6 @@ function $HttpProvider() {
    * {@link ng.$cacheFactory `$cacheFactory`} to enable or disable caching of HTTP responses
    * by default. See {@link $http#caching $http Caching} for more information.
    *
-   * - **`defaults.xsrfCookieName`** - {string} - Name of cookie containing the XSRF token.
-   * Defaults value is `'XSRF-TOKEN'`.
-   *
-   * - **`defaults.xsrfHeaderName`** - {string} - Name of HTTP header to populate with the
-   * XSRF token. Defaults value is `'X-XSRF-TOKEN'`.
-   *
    * - **`defaults.headers`** - {Object} - Default headers for all $http requests.
    * Refer to {@link ng.$http#setting-http-headers $http} for documentation on
    * setting default headers.
@@ -11159,15 +11401,38 @@ function $HttpProvider() {
    *     - **`defaults.headers.put`**
    *     - **`defaults.headers.patch`**
    *
+   * - **`defaults.jsonpCallbackParam`** - `{string}` - the name of the query parameter that passes the name of the
+   * callback in a JSONP request. The value of this parameter will be replaced with the expression generated by the
+   * {@link $jsonpCallbacks} service. Defaults to `'callback'`.
    *
    * - **`defaults.paramSerializer`** - `{string|function(Object<string,string>):string}` - A function
    *  used to the prepare string representation of request parameters (specified as an object).
    *  If specified as string, it is interpreted as a function registered with the {@link auto.$injector $injector}.
    *  Defaults to {@link ng.$httpParamSerializer $httpParamSerializer}.
    *
-   * - **`defaults.jsonpCallbackParam`** - `{string}` - the name of the query parameter that passes the name of the
-   * callback in a JSONP request. The value of this parameter will be replaced with the expression generated by the
-   * {@link $jsonpCallbacks} service. Defaults to `'callback'`.
+   * - **`defaults.transformRequest`** -
+   * `{Array<function(data, headersGetter)>|function(data, headersGetter)}` -
+   * An array of functions (or a single function) which are applied to the request data.
+   * By default, this is an array with one request transformation function:
+   *
+   *   - If the `data` property of the request configuration object contains an object, serialize it
+   *     into JSON format.
+   *
+   * - **`defaults.transformResponse`** -
+   * `{Array<function(data, headersGetter, status)>|function(data, headersGetter, status)}` -
+   * An array of functions (or a single function) which are applied to the response data. By default,
+   * this is an array which applies one response transformation function that does two things:
+   *
+   *  - If XSRF prefix is detected, strip it
+   *    (see {@link ng.$http#security-considerations Security Considerations in the $http docs}).
+   *  - If the `Content-Type` is `application/json` or the response looks like JSON,
+   *    deserialize it using a JSON parser.
+   *
+   * - **`defaults.xsrfCookieName`** - {string} - Name of cookie containing the XSRF token.
+   * Defaults value is `'XSRF-TOKEN'`.
+   *
+   * - **`defaults.xsrfHeaderName`** - {string} - Name of HTTP header to populate with the
+   * XSRF token. Defaults value is `'X-XSRF-TOKEN'`.
    *
    **/
   var defaults = this.defaults = {
@@ -11431,15 +11696,18 @@ function $HttpProvider() {
      *
      * Angular provides the following default transformations:
      *
-     * Request transformations (`$httpProvider.defaults.transformRequest` and `$http.defaults.transformRequest`):
+     * Request transformations (`$httpProvider.defaults.transformRequest` and `$http.defaults.transformRequest`) is
+     * an array with one function that does the following:
      *
      * - If the `data` property of the request configuration object contains an object, serialize it
      *   into JSON format.
      *
-     * Response transformations (`$httpProvider.defaults.transformResponse` and `$http.defaults.transformResponse`):
+     * Response transformations (`$httpProvider.defaults.transformResponse` and `$http.defaults.transformResponse`) is
+     * an array with one function that does the following:
      *
      *  - If XSRF prefix is detected, strip it (see Security Considerations section below).
-     *  - If JSON response is detected, deserialize it using a JSON parser.
+     *  - If the `Content-Type` is `application/json` or the response looks like JSON,
+   *      deserialize it using a JSON parser.
      *
      *
      * ### Overriding the Default Transformations Per Request
@@ -12927,7 +13195,7 @@ function $IntervalProvider() {
       * @param {boolean=} [invokeApply=true] If set to `false` skips model dirty checking, otherwise
       *   will invoke `fn` within the {@link ng.$rootScope.Scope#$apply $apply} block.
       * @param {...*=} Pass additional parameters to the executed function.
-      * @returns {promise} A promise which will be notified on each iteration.
+      * @returns {promise} A promise which will be notified on each iteration. It will resolve once all iterations of the interval complete.
       *
       * @example
       * <example module="intervalExample" name="interval-service">
@@ -13076,7 +13344,7 @@ function $IntervalProvider() {
     interval.cancel = function(promise) {
       if (promise && promise.$$intervalId in intervals) {
         // Interval cancels should not report as unhandled promise.
-        intervals[promise.$$intervalId].promise.catch(noop);
+        markQExceptionHandled(intervals[promise.$$intervalId].promise);
         intervals[promise.$$intervalId].reject('canceled');
         $window.clearInterval(promise.$$intervalId);
         delete intervals[promise.$$intervalId];
@@ -13099,8 +13367,8 @@ function $IntervalProvider() {
  * how they vary compared to the requested url.
  */
 var $jsonpCallbacksProvider = /** @this */ function() {
-  this.$get = ['$window', function($window) {
-    var callbacks = $window.angular.callbacks;
+  this.$get = function() {
+    var callbacks = angular.callbacks;
     var callbackMap = {};
 
     function createCallback(callbackId) {
@@ -13167,7 +13435,7 @@ var $jsonpCallbacksProvider = /** @this */ function() {
         delete callbackMap[callbackPath];
       }
     };
-  }];
+  };
 };
 
 /**
@@ -14218,6 +14486,14 @@ function $LocationProvider() {
  *
  * The main purpose of this service is to simplify debugging and troubleshooting.
  *
+ * To reveal the location of the calls to `$log` in the JavaScript console,
+ * you can "blackbox" the AngularJS source in your browser:
+ *
+ * [Mozilla description of blackboxing](https://developer.mozilla.org/en-US/docs/Tools/Debugger/How_to/Black_box_a_source).
+ * [Chrome description of blackboxing](https://developer.chrome.com/devtools/docs/blackboxing).
+ *
+ * Note: Not all browsers support blackboxing.
+ *
  * The default is to log `debug` messages. You can use
  * {@link ng.$logProvider ng.$logProvider#debugEnabled} to change this.
  *
@@ -14274,6 +14550,15 @@ function $LogProvider() {
   };
 
   this.$get = ['$window', function($window) {
+    // Support: IE 9-11, Edge 12-14+
+    // IE/Edge display errors in such a way that it requires the user to click in 4 places
+    // to see the stack trace. There is no way to feature-detect it so there's a chance
+    // of the user agent sniffing to go wrong but since it's only about logging, this shouldn't
+    // break apps. Other browsers display errors in a sensible way and some of them map stack
+    // traces along source maps if available so it makes sense to let browsers display it
+    // as they want.
+    var formatStackTrace = msie || /\bEdge\//.test($window.navigator && $window.navigator.userAgent);
+
     return {
       /**
        * @ngdoc method
@@ -14330,8 +14615,8 @@ function $LogProvider() {
     };
 
     function formatError(arg) {
-      if (arg instanceof Error) {
-        if (arg.stack) {
+      if (isError(arg)) {
+        if (arg.stack && formatStackTrace) {
           arg = (arg.message && arg.stack.indexOf(arg.message) === -1)
               ? 'Error: ' + arg.message + '\n' + arg.stack
               : arg.stack;
@@ -14344,29 +14629,17 @@ function $LogProvider() {
 
     function consoleLog(type) {
       var console = $window.console || {},
-          logFn = console[type] || console.log || noop,
-          hasApply = false;
+          logFn = console[type] || console.log || noop;
 
-      // Note: reading logFn.apply throws an error in IE11 in IE8 document mode.
-      // The reason behind this is that console.log has type "object" in IE8...
-      try {
-        hasApply = !!logFn.apply;
-      } catch (e) { /* empty */ }
-
-      if (hasApply) {
-        return function() {
-          var args = [];
-          forEach(arguments, function(arg) {
-            args.push(formatError(arg));
-          });
-          return logFn.apply(console, args);
-        };
-      }
-
-      // we are IE which either doesn't have window.console => this is noop and we do nothing,
-      // or we are IE where console.log doesn't have apply so we log at least first 2 args
-      return function(arg1, arg2) {
-        logFn(arg1, arg2 == null ? '' : arg2);
+      return function() {
+        var args = [];
+        forEach(arguments, function(arg) {
+          args.push(formatError(arg));
+        });
+        // Support: IE 9 only
+        // console methods don't inherit from Function.prototype in IE 9 so we can't
+        // call `logFn.apply(console, args)` directly.
+        return Function.prototype.apply.call(logFn, console, args);
       };
     }
   }];
@@ -14994,15 +15267,47 @@ function isStateless($filter, filterName) {
   return !fn.$stateful;
 }
 
-function findConstantAndWatchExpressions(ast, $filter) {
+var PURITY_ABSOLUTE = 1;
+var PURITY_RELATIVE = 2;
+
+// Detect nodes which could depend on non-shallow state of objects
+function isPure(node, parentIsPure) {
+  switch (node.type) {
+    // Computed members might invoke a stateful toString()
+    case AST.MemberExpression:
+      if (node.computed) {
+        return false;
+      }
+      break;
+
+    // Unary always convert to primative
+    case AST.UnaryExpression:
+      return PURITY_ABSOLUTE;
+
+    // The binary + operator can invoke a stateful toString().
+    case AST.BinaryExpression:
+      return node.operator !== '+' ? PURITY_ABSOLUTE : false;
+
+    // Functions / filters probably read state from within objects
+    case AST.CallExpression:
+      return false;
+  }
+
+  return (undefined === parentIsPure) ? PURITY_RELATIVE : parentIsPure;
+}
+
+function findConstantAndWatchExpressions(ast, $filter, parentIsPure) {
   var allConstants;
   var argsToWatch;
   var isStatelessFilter;
+
+  var astIsPure = ast.isPure = isPure(ast, parentIsPure);
+
   switch (ast.type) {
   case AST.Program:
     allConstants = true;
     forEach(ast.body, function(expr) {
-      findConstantAndWatchExpressions(expr.expression, $filter);
+      findConstantAndWatchExpressions(expr.expression, $filter, astIsPure);
       allConstants = allConstants && expr.expression.constant;
     });
     ast.constant = allConstants;
@@ -15012,26 +15317,26 @@ function findConstantAndWatchExpressions(ast, $filter) {
     ast.toWatch = [];
     break;
   case AST.UnaryExpression:
-    findConstantAndWatchExpressions(ast.argument, $filter);
+    findConstantAndWatchExpressions(ast.argument, $filter, astIsPure);
     ast.constant = ast.argument.constant;
     ast.toWatch = ast.argument.toWatch;
     break;
   case AST.BinaryExpression:
-    findConstantAndWatchExpressions(ast.left, $filter);
-    findConstantAndWatchExpressions(ast.right, $filter);
+    findConstantAndWatchExpressions(ast.left, $filter, astIsPure);
+    findConstantAndWatchExpressions(ast.right, $filter, astIsPure);
     ast.constant = ast.left.constant && ast.right.constant;
     ast.toWatch = ast.left.toWatch.concat(ast.right.toWatch);
     break;
   case AST.LogicalExpression:
-    findConstantAndWatchExpressions(ast.left, $filter);
-    findConstantAndWatchExpressions(ast.right, $filter);
+    findConstantAndWatchExpressions(ast.left, $filter, astIsPure);
+    findConstantAndWatchExpressions(ast.right, $filter, astIsPure);
     ast.constant = ast.left.constant && ast.right.constant;
     ast.toWatch = ast.constant ? [] : [ast];
     break;
   case AST.ConditionalExpression:
-    findConstantAndWatchExpressions(ast.test, $filter);
-    findConstantAndWatchExpressions(ast.alternate, $filter);
-    findConstantAndWatchExpressions(ast.consequent, $filter);
+    findConstantAndWatchExpressions(ast.test, $filter, astIsPure);
+    findConstantAndWatchExpressions(ast.alternate, $filter, astIsPure);
+    findConstantAndWatchExpressions(ast.consequent, $filter, astIsPure);
     ast.constant = ast.test.constant && ast.alternate.constant && ast.consequent.constant;
     ast.toWatch = ast.constant ? [] : [ast];
     break;
@@ -15040,9 +15345,9 @@ function findConstantAndWatchExpressions(ast, $filter) {
     ast.toWatch = [ast];
     break;
   case AST.MemberExpression:
-    findConstantAndWatchExpressions(ast.object, $filter);
+    findConstantAndWatchExpressions(ast.object, $filter, astIsPure);
     if (ast.computed) {
-      findConstantAndWatchExpressions(ast.property, $filter);
+      findConstantAndWatchExpressions(ast.property, $filter, astIsPure);
     }
     ast.constant = ast.object.constant && (!ast.computed || ast.property.constant);
     ast.toWatch = [ast];
@@ -15052,7 +15357,7 @@ function findConstantAndWatchExpressions(ast, $filter) {
     allConstants = isStatelessFilter;
     argsToWatch = [];
     forEach(ast.arguments, function(expr) {
-      findConstantAndWatchExpressions(expr, $filter);
+      findConstantAndWatchExpressions(expr, $filter, astIsPure);
       allConstants = allConstants && expr.constant;
       if (!expr.constant) {
         argsToWatch.push.apply(argsToWatch, expr.toWatch);
@@ -15062,8 +15367,8 @@ function findConstantAndWatchExpressions(ast, $filter) {
     ast.toWatch = isStatelessFilter ? argsToWatch : [ast];
     break;
   case AST.AssignmentExpression:
-    findConstantAndWatchExpressions(ast.left, $filter);
-    findConstantAndWatchExpressions(ast.right, $filter);
+    findConstantAndWatchExpressions(ast.left, $filter, astIsPure);
+    findConstantAndWatchExpressions(ast.right, $filter, astIsPure);
     ast.constant = ast.left.constant && ast.right.constant;
     ast.toWatch = [ast];
     break;
@@ -15071,7 +15376,7 @@ function findConstantAndWatchExpressions(ast, $filter) {
     allConstants = true;
     argsToWatch = [];
     forEach(ast.elements, function(expr) {
-      findConstantAndWatchExpressions(expr, $filter);
+      findConstantAndWatchExpressions(expr, $filter, astIsPure);
       allConstants = allConstants && expr.constant;
       if (!expr.constant) {
         argsToWatch.push.apply(argsToWatch, expr.toWatch);
@@ -15084,13 +15389,13 @@ function findConstantAndWatchExpressions(ast, $filter) {
     allConstants = true;
     argsToWatch = [];
     forEach(ast.properties, function(property) {
-      findConstantAndWatchExpressions(property.value, $filter);
+      findConstantAndWatchExpressions(property.value, $filter, astIsPure);
       allConstants = allConstants && property.value.constant && !property.computed;
       if (!property.value.constant) {
         argsToWatch.push.apply(argsToWatch, property.value.toWatch);
       }
       if (property.computed) {
-        findConstantAndWatchExpressions(property.key, $filter);
+        findConstantAndWatchExpressions(property.key, $filter, astIsPure);
         if (!property.key.constant) {
           argsToWatch.push.apply(argsToWatch, property.key.toWatch);
         }
@@ -15141,15 +15446,13 @@ function isConstant(ast) {
   return ast.constant;
 }
 
-function ASTCompiler(astBuilder, $filter) {
-  this.astBuilder = astBuilder;
+function ASTCompiler($filter) {
   this.$filter = $filter;
 }
 
 ASTCompiler.prototype = {
-  compile: function(expression) {
+  compile: function(ast) {
     var self = this;
-    var ast = this.astBuilder.ast(expression);
     this.state = {
       nextId: 0,
       filters: {},
@@ -15177,7 +15480,7 @@ ASTCompiler.prototype = {
       var intoId = self.nextId();
       self.recurse(watch, intoId);
       self.return_(intoId);
-      self.state.inputs.push(fnKey);
+      self.state.inputs.push({name: fnKey, isPure: watch.isPure});
       watch.watchId = key;
     });
     this.state.computing = 'fn';
@@ -15204,8 +15507,6 @@ ASTCompiler.prototype = {
           ifDefined,
           plusFn);
     this.state = this.stage = undefined;
-    fn.literal = isLiteral(ast);
-    fn.constant = isConstant(ast);
     return fn;
   },
 
@@ -15215,13 +15516,16 @@ ASTCompiler.prototype = {
 
   watchFns: function() {
     var result = [];
-    var fns = this.state.inputs;
+    var inputs = this.state.inputs;
     var self = this;
-    forEach(fns, function(name) {
-      result.push('var ' + name + '=' + self.generateFunction(name, 's'));
+    forEach(inputs, function(input) {
+      result.push('var ' + input.name + '=' + self.generateFunction(input.name, 's'));
+      if (input.isPure) {
+        result.push(input.name, '.isPure=' + JSON.stringify(input.isPure) + ';');
+      }
     });
-    if (fns.length) {
-      result.push('fn.inputs=[' + fns.join(',') + '];');
+    if (inputs.length) {
+      result.push('fn.inputs=[' + inputs.map(function(i) { return i.name; }).join(',') + '];');
     }
     return result.join('');
   },
@@ -15608,15 +15912,13 @@ ASTCompiler.prototype = {
 };
 
 
-function ASTInterpreter(astBuilder, $filter) {
-  this.astBuilder = astBuilder;
+function ASTInterpreter($filter) {
   this.$filter = $filter;
 }
 
 ASTInterpreter.prototype = {
-  compile: function(expression) {
+  compile: function(ast) {
     var self = this;
-    var ast = this.astBuilder.ast(expression);
     findConstantAndWatchExpressions(ast, self.$filter);
     var assignable;
     var assign;
@@ -15629,6 +15931,7 @@ ASTInterpreter.prototype = {
       inputs = [];
       forEach(toWatch, function(watch, key) {
         var input = self.recurse(watch);
+        input.isPure = watch.isPure;
         watch.input = input;
         inputs.push(input);
         watch.watchId = key;
@@ -15655,8 +15958,6 @@ ASTInterpreter.prototype = {
     if (inputs) {
       fn.inputs = inputs;
     }
-    fn.literal = isLiteral(ast);
-    fn.constant = isConstant(ast);
     return fn;
   },
 
@@ -15985,20 +16286,21 @@ ASTInterpreter.prototype = {
 /**
  * @constructor
  */
-var Parser = function Parser(lexer, $filter, options) {
-  this.lexer = lexer;
-  this.$filter = $filter;
-  this.options = options;
+function Parser(lexer, $filter, options) {
   this.ast = new AST(lexer, options);
-  this.astCompiler = options.csp ? new ASTInterpreter(this.ast, $filter) :
-                                   new ASTCompiler(this.ast, $filter);
-};
+  this.astCompiler = options.csp ? new ASTInterpreter($filter) :
+                                   new ASTCompiler($filter);
+}
 
 Parser.prototype = {
   constructor: Parser,
 
   parse: function(text) {
-    return this.astCompiler.compile(text);
+    var ast = this.ast.ast(text);
+    var fn = this.astCompiler.compile(ast);
+    fn.literal = isLiteral(ast);
+    fn.constant = isConstant(ast);
+    return fn;
   }
 };
 
@@ -16167,14 +16469,14 @@ function $ParseProvider() {
         return newValue === oldValueOfValue;
       }
 
-      if (typeof newValue === 'object' && !compareObjectIdentity) {
+      if (typeof newValue === 'object') {
 
         // attempt to convert the value to a primitive type
         // TODO(docs): add a note to docs that by implementing valueOf even objects and arrays can
         //             be cheaply dirty-checked
         newValue = getValueOf(newValue);
 
-        if (typeof newValue === 'object') {
+        if (typeof newValue === 'object' && !compareObjectIdentity) {
           // objects/arrays are not supported - deep-watching them would be too expensive
           return false;
         }
@@ -16196,7 +16498,7 @@ function $ParseProvider() {
         inputExpressions = inputExpressions[0];
         return scope.$watch(function expressionInputWatch(scope) {
           var newInputValue = inputExpressions(scope);
-          if (!expressionInputDirtyCheck(newInputValue, oldInputValueOf, parsedExpression.literal)) {
+          if (!expressionInputDirtyCheck(newInputValue, oldInputValueOf, inputExpressions.isPure)) {
             lastResult = parsedExpression(scope, undefined, undefined, [newInputValue]);
             oldInputValueOf = newInputValue && getValueOf(newInputValue);
           }
@@ -16216,7 +16518,7 @@ function $ParseProvider() {
 
         for (var i = 0, ii = inputExpressions.length; i < ii; i++) {
           var newInputValue = inputExpressions[i](scope);
-          if (changed || (changed = !expressionInputDirtyCheck(newInputValue, oldInputValueOfValues[i], parsedExpression.literal))) {
+          if (changed || (changed = !expressionInputDirtyCheck(newInputValue, oldInputValueOfValues[i], inputExpressions[i].isPure))) {
             oldInputValues[i] = newInputValue;
             oldInputValueOfValues[i] = newInputValue && getValueOf(newInputValue);
           }
@@ -16314,15 +16616,24 @@ function $ParseProvider() {
 
       // Propagate $$watchDelegates other then inputsWatchDelegate
       useInputs = !parsedExpression.inputs;
-      if (parsedExpression.$$watchDelegate &&
-          parsedExpression.$$watchDelegate !== inputsWatchDelegate) {
-        fn.$$watchDelegate = parsedExpression.$$watchDelegate;
+      if (watchDelegate && watchDelegate !== inputsWatchDelegate) {
+        fn.$$watchDelegate = watchDelegate;
         fn.inputs = parsedExpression.inputs;
       } else if (!interceptorFn.$stateful) {
-        // If there is an interceptor, but no watchDelegate then treat the interceptor like
-        // we treat filters - it is assumed to be a pure function unless flagged with $stateful
+        // Treat interceptor like filters - assume non-stateful by default and use the inputsWatchDelegate
         fn.$$watchDelegate = inputsWatchDelegate;
         fn.inputs = parsedExpression.inputs ? parsedExpression.inputs : [parsedExpression];
+      }
+
+      if (fn.inputs) {
+        fn.inputs = fn.inputs.map(function(e) {
+              // Remove the isPure flag of inputs when it is not absolute because they are now wrapped in a
+              // potentially non-pure interceptor function.
+              if (e.isPure === PURITY_RELATIVE) {
+                return function depurifier(s) { return e(s); };
+              }
+              return e;
+            });
       }
 
       return fn;
@@ -16610,7 +16921,7 @@ function $$QProvider() {
  * @param {function(function)} nextTick Function for executing functions in the next turn.
  * @param {function(...*)} exceptionHandler Function into which unexpected exceptions are passed for
  *     debugging purposes.
- @ param {=boolean} errorOnUnhandledRejections Whether an error should be generated on unhandled
+ * @param {boolean=} errorOnUnhandledRejections Whether an error should be generated on unhandled
  *     promises rejections.
  * @returns {object} Promise manager.
  */
@@ -16681,7 +16992,7 @@ function qFactory(nextTick, exceptionHandler, errorOnUnhandledRejections) {
     state.pending = undefined;
     try {
       for (var i = 0, ii = pending.length; i < ii; ++i) {
-        state.pur = true;
+        markQStateExceptionHandled(state);
         promise = pending[i][0];
         fn = pending[i][state.status];
         try {
@@ -16708,10 +17019,10 @@ function qFactory(nextTick, exceptionHandler, errorOnUnhandledRejections) {
     // eslint-disable-next-line no-unmodified-loop-condition
     while (!queueSize && checkQueue.length) {
       var toCheck = checkQueue.shift();
-      if (!toCheck.pur) {
-        toCheck.pur = true;
+      if (!isStateExceptionHandled(toCheck)) {
+        markQStateExceptionHandled(toCheck);
         var errorMessage = 'Possibly unhandled rejection: ' + toDebugString(toCheck.value);
-        if (toCheck.value instanceof Error) {
+        if (isError(toCheck.value)) {
           exceptionHandler(toCheck.value, errorMessage);
         } else {
           exceptionHandler(errorMessage);
@@ -16721,7 +17032,7 @@ function qFactory(nextTick, exceptionHandler, errorOnUnhandledRejections) {
   }
 
   function scheduleProcessQueue(state) {
-    if (errorOnUnhandledRejections && !state.pending && state.status === 2 && !state.pur) {
+    if (errorOnUnhandledRejections && !state.pending && state.status === 2 && !isStateExceptionHandled(state)) {
       if (queueSize === 0 && checkQueue.length === 0) {
         nextTick(processChecks);
       }
@@ -17000,6 +17311,16 @@ function qFactory(nextTick, exceptionHandler, errorOnUnhandledRejections) {
   $Q.race = race;
 
   return $Q;
+}
+
+function isStateExceptionHandled(state) {
+  return !!state.pur;
+}
+function markQStateExceptionHandled(state) {
+  state.pur = true;
+}
+function markQExceptionHandled(q) {
+  markQStateExceptionHandled(q.$$state);
 }
 
 /** @this */
@@ -17482,6 +17803,12 @@ function $RootScopeProvider() {
        *   values are examined for changes on every call to `$digest`.
        * - The `listener` is called whenever any expression in the `watchExpressions` array changes.
        *
+       * `$watchGroup` is more performant than watching each expression individually, and should be
+       * used when the listener does not need to know which expression has changed.
+       * If the listener needs to know which expression has changed,
+       * {@link ng.$rootScope.Scope#$watch $watch()} or
+       * {@link ng.$rootScope.Scope#$watchCollection $watchCollection()} should be used.
+       *
        * @param {Array.<string|Function(scope)>} watchExpressions Array of expressions that will be individually
        * watched using {@link ng.$rootScope.Scope#$watch $watch()}
        *
@@ -17490,7 +17817,34 @@ function $RootScopeProvider() {
        *    The `newValues` array contains the current values of the `watchExpressions`, with the indexes matching
        *    those of `watchExpression`
        *    and the `oldValues` array contains the previous values of the `watchExpressions`, with the indexes matching
-       *    those of `watchExpression`
+       *    those of `watchExpression`.
+       *
+       *    Note that `newValues` and `oldValues` reflect the differences in each **individual**
+       *    expression, and not the difference of the values between each call of the listener.
+       *    That means the difference between `newValues` and `oldValues` cannot be used to determine
+       *    which expression has changed / remained stable:
+       *
+       *    ```js
+       *
+       *    $scope.$watchGroup(['v1', 'v2'], function(newValues, oldValues) {
+       *      console.log(newValues, oldValues);
+       *    });
+       *
+       *    // newValues, oldValues initially
+       *    // [undefined, undefined], [undefined, undefined]
+       *
+       *    $scope.v1 = 'a';
+       *    $scope.v2 = 'a';
+       *
+       *    // ['a', 'a'], [undefined, undefined]
+       *
+       *    $scope.v2 = 'b'
+       *
+       *    // v1 hasn't changed since it became `'a'`, therefore its oldValue is still `undefined`
+       *    // ['a', 'b'], [undefined, 'a']
+       *
+       *    ```
+       *
        *    The `scope` refers to the current scope.
        * @returns {function()} Returns a de-registration function for all listeners.
        */
@@ -17819,12 +18173,13 @@ function $RootScopeProvider() {
           current = target;
 
           // It's safe for asyncQueuePosition to be a local variable here because this loop can't
-          // be reentered recursively. Calling $digest from a function passed to $applyAsync would
+          // be reentered recursively. Calling $digest from a function passed to $evalAsync would
           // lead to a '$digest already in progress' error.
           for (var asyncQueuePosition = 0; asyncQueuePosition < asyncQueue.length; asyncQueuePosition++) {
             try {
               asyncTask = asyncQueue[asyncQueuePosition];
-              asyncTask.scope.$eval(asyncTask.expression, asyncTask.locals);
+              fn = asyncTask.fn;
+              fn(asyncTask.scope, asyncTask.locals);
             } catch (e) {
               $exceptionHandler(e);
             }
@@ -18058,7 +18413,7 @@ function $RootScopeProvider() {
           });
         }
 
-        asyncQueue.push({scope: this, expression: $parse(expr), locals: locals});
+        asyncQueue.push({scope: this, fn: $parse(expr), locals: locals});
       },
 
       $$postDigest: function(fn) {
@@ -18532,12 +18887,21 @@ function $$SanitizeUriProvider() {
 var $sceMinErr = minErr('$sce');
 
 var SCE_CONTEXTS = {
+  // HTML is used when there's HTML rendered (e.g. ng-bind-html, iframe srcdoc binding).
   HTML: 'html',
+
+  // Style statements or stylesheets. Currently unused in AngularJS.
   CSS: 'css',
+
+  // An URL used in a context where it does not refer to a resource that loads code. Currently
+  // unused in AngularJS.
   URL: 'url',
-  // RESOURCE_URL is a subtype of URL used in contexts where a privileged resource is sourced from a
-  // url.  (e.g. ng-include, script src, templateUrl)
+
+  // RESOURCE_URL is a subtype of URL used where the referred-to resource could be interpreted as
+  // code. (e.g. ng-include, script src binding, templateUrl)
   RESOURCE_URL: 'resourceUrl',
+
+  // Script. Currently unused in AngularJS.
   JS: 'js'
 };
 
@@ -18599,6 +18963,16 @@ function adjustMatchers(matchers) {
  * `$sceDelegate` is a service that is used by the `$sce` service to provide {@link ng.$sce Strict
  * Contextual Escaping (SCE)} services to AngularJS.
  *
+ * For an overview of this service and the functionnality it provides in AngularJS, see the main
+ * page for {@link ng.$sce SCE}. The current page is targeted for developers who need to alter how
+ * SCE works in their application, which shouldn't be needed in most cases.
+ *
+ * <div class="alert alert-danger">
+ * AngularJS strongly relies on contextual escaping for the security of bindings: disabling or
+ * modifying this might cause cross site scripting (XSS) vulnerabilities. For libraries owners,
+ * changes to this service will also influence users, so be extra careful and document your changes.
+ * </div>
+ *
  * Typically, you would configure or override the {@link ng.$sceDelegate $sceDelegate} instead of
  * the `$sce` service to customize the way Strict Contextual Escaping works in AngularJS.  This is
  * because, while the `$sce` provides numerous shorthand methods, etc., you really only need to
@@ -18624,10 +18998,14 @@ function adjustMatchers(matchers) {
  * @description
  *
  * The `$sceDelegateProvider` provider allows developers to configure the {@link ng.$sceDelegate
- * $sceDelegate} service.  This allows one to get/set the whitelists and blacklists used to ensure
- * that the URLs used for sourcing Angular templates are safe.  Refer {@link
- * ng.$sceDelegateProvider#resourceUrlWhitelist $sceDelegateProvider.resourceUrlWhitelist} and
- * {@link ng.$sceDelegateProvider#resourceUrlBlacklist $sceDelegateProvider.resourceUrlBlacklist}
+ * $sceDelegate service}, used as a delegate for {@link ng.$sce Strict Contextual Escaping (SCE)}.
+ *
+ * The `$sceDelegateProvider` allows one to get/set the whitelists and blacklists used to ensure
+ * that the URLs used for sourcing AngularJS templates and other script-running URLs are safe (all
+ * places that use the `$sce.RESOURCE_URL` context). See
+ * {@link ng.$sceDelegateProvider#resourceUrlWhitelist $sceDelegateProvider.resourceUrlWhitelist}
+ * and
+ * {@link ng.$sceDelegateProvider#resourceUrlBlacklist $sceDelegateProvider.resourceUrlBlacklist},
  *
  * For the general details about this service in Angular, read the main page for {@link ng.$sce
  * Strict Contextual Escaping (SCE)}.
@@ -18656,6 +19034,13 @@ function adjustMatchers(matchers) {
  *    ]);
  *  });
  * ```
+ * Note that an empty whitelist will block every resource URL from being loaded, and will require
+ * you to manually mark each one as trusted with `$sce.trustAsResourceUrl`. However, templates
+ * requested by {@link ng.$templateRequest $templateRequest} that are present in
+ * {@link ng.$templateCache $templateCache} will not go through this check. If you have a mechanism
+ * to populate your templates in that cache at config time, then it is a good idea to remove 'self'
+ * from that whitelist. This helps to mitigate the security impact of certain types of issues, like
+ * for instance attacker-controlled `ng-includes`.
  */
 
 function $SceDelegateProvider() {
@@ -18671,23 +19056,23 @@ function $SceDelegateProvider() {
    * @kind function
    *
    * @param {Array=} whitelist When provided, replaces the resourceUrlWhitelist with the value
-   *    provided.  This must be an array or null.  A snapshot of this array is used so further
-   *    changes to the array are ignored.
+   *     provided.  This must be an array or null.  A snapshot of this array is used so further
+   *     changes to the array are ignored.
+   *     Follow {@link ng.$sce#resourceUrlPatternItem this link} for a description of the items
+   *     allowed in this array.
    *
-   *    Follow {@link ng.$sce#resourceUrlPatternItem this link} for a description of the items
-   *    allowed in this array.
+   * @return {Array} The currently set whitelist array.
    *
-   *    <div class="alert alert-warning">
-   *    **Note:** an empty whitelist array will block all URLs!
-   *    </div>
-   *
-   * @return {Array} the currently set whitelist array.
+   * @description
+   * Sets/Gets the whitelist of trusted resource URLs.
    *
    * The **default value** when no whitelist has been explicitly set is `['self']` allowing only
    * same origin resource requests.
    *
-   * @description
-   * Sets/Gets the whitelist of trusted resource URLs.
+   * <div class="alert alert-warning">
+   * **Note:** the default whitelist of 'self' is not recommended if your app shares its origin
+   * with other apps! It is a good idea to limit it to only your application's directory.
+   * </div>
    */
   this.resourceUrlWhitelist = function(value) {
     if (arguments.length) {
@@ -18702,25 +19087,23 @@ function $SceDelegateProvider() {
    * @kind function
    *
    * @param {Array=} blacklist When provided, replaces the resourceUrlBlacklist with the value
-   *    provided.  This must be an array or null.  A snapshot of this array is used so further
-   *    changes to the array are ignored.
+   *     provided.  This must be an array or null.  A snapshot of this array is used so further
+   *     changes to the array are ignored.</p><p>
+   *     Follow {@link ng.$sce#resourceUrlPatternItem this link} for a description of the items
+   *     allowed in this array.</p><p>
+   *     The typical usage for the blacklist is to **block
+   *     [open redirects](http://cwe.mitre.org/data/definitions/601.html)** served by your domain as
+   *     these would otherwise be trusted but actually return content from the redirected domain.
+   *     </p><p>
+   *     Finally, **the blacklist overrides the whitelist** and has the final say.
    *
-   *    Follow {@link ng.$sce#resourceUrlPatternItem this link} for a description of the items
-   *    allowed in this array.
-   *
-   *    The typical usage for the blacklist is to **block
-   *    [open redirects](http://cwe.mitre.org/data/definitions/601.html)** served by your domain as
-   *    these would otherwise be trusted but actually return content from the redirected domain.
-   *
-   *    Finally, **the blacklist overrides the whitelist** and has the final say.
-   *
-   * @return {Array} the currently set blacklist array.
-   *
-   * The **default value** when no whitelist has been explicitly set is the empty array (i.e. there
-   * is no blacklist.)
+   * @return {Array} The currently set blacklist array.
    *
    * @description
    * Sets/Gets the blacklist of trusted resource URLs.
+   *
+   * The **default value** when no whitelist has been explicitly set is the empty array (i.e. there
+   * is no blacklist.)
    */
 
   this.resourceUrlBlacklist = function(value) {
@@ -18804,17 +19187,24 @@ function $SceDelegateProvider() {
      * @name $sceDelegate#trustAs
      *
      * @description
-     * Returns an object that is trusted by angular for use in specified strict
-     * contextual escaping contexts (such as ng-bind-html, ng-include, any src
-     * attribute interpolation, any dom event binding attribute interpolation
-     * such as for onclick,  etc.) that uses the provided value.
-     * See {@link ng.$sce $sce} for enabling strict contextual escaping.
+     * Returns a trusted representation of the parameter for the specified context. This trusted
+     * object will later on be used as-is, without any security check, by bindings or directives
+     * that require this security context.
+     * For instance, marking a string as trusted for the `$sce.HTML` context will entirely bypass
+     * the potential `$sanitize` call in corresponding `$sce.HTML` bindings or directives, such as
+     * `ng-bind-html`. Note that in most cases you won't need to call this function: if you have the
+     * sanitizer loaded, passing the value itself will render all the HTML that does not pose a
+     * security risk.
      *
-     * @param {string} type The kind of context in which this value is safe for use.  e.g. url,
-     *   resourceUrl, html, js and css.
-     * @param {*} value The value that that should be considered trusted/safe.
-     * @returns {*} A value that can be used to stand in for the provided `value` in places
-     * where Angular expects a $sce.trustAs() return value.
+     * See {@link ng.$sceDelegate#getTrusted getTrusted} for the function that will consume those
+     * trusted values, and {@link ng.$sce $sce} for general documentation about strict contextual
+     * escaping.
+     *
+     * @param {string} type The context in which this value is safe for use, e.g. `$sce.URL`,
+     *     `$sce.RESOURCE_URL`, `$sce.HTML`, `$sce.JS` or `$sce.CSS`.
+     *
+     * @param {*} value The value that should be considered trusted.
+     * @return {*} A trusted representation of value, that can be used in the given context.
      */
     function trustAs(type, trustedValue) {
       var Constructor = (byType.hasOwnProperty(type) ? byType[type] : null);
@@ -18846,11 +19236,11 @@ function $SceDelegateProvider() {
      * ng.$sceDelegate#trustAs `$sceDelegate.trustAs`}.
      *
      * If the passed parameter is not a value that had been returned by {@link
-     * ng.$sceDelegate#trustAs `$sceDelegate.trustAs`}, returns it as-is.
+     * ng.$sceDelegate#trustAs `$sceDelegate.trustAs`}, it must be returned as-is.
      *
      * @param {*} value The result of a prior {@link ng.$sceDelegate#trustAs `$sceDelegate.trustAs`}
-     *      call or anything else.
-     * @returns {*} The `value` that was originally provided to {@link ng.$sceDelegate#trustAs
+     *     call or anything else.
+     * @return {*} The `value` that was originally provided to {@link ng.$sceDelegate#trustAs
      *     `$sceDelegate.trustAs`} if `value` is the result of such a call.  Otherwise, returns
      *     `value` unchanged.
      */
@@ -18867,33 +19257,38 @@ function $SceDelegateProvider() {
      * @name $sceDelegate#getTrusted
      *
      * @description
-     * Takes the result of a {@link ng.$sceDelegate#trustAs `$sceDelegate.trustAs`} call and
-     * returns the originally supplied value if the queried context type is a supertype of the
-     * created type.  If this condition isn't satisfied, throws an exception.
+     * Takes any input, and either returns a value that's safe to use in the specified context, or
+     * throws an exception.
      *
-     * <div class="alert alert-danger">
-     * Disabling auto-escaping is extremely dangerous, it usually creates a Cross Site Scripting
-     * (XSS) vulnerability in your application.
-     * </div>
+     * In practice, there are several cases. When given a string, this function runs checks
+     * and sanitization to make it safe without prior assumptions. When given the result of a {@link
+     * ng.$sceDelegate#trustAs `$sceDelegate.trustAs`} call, it returns the originally supplied
+     * value if that value's context is valid for this call's context. Finally, this function can
+     * also throw when there is no way to turn `maybeTrusted` in a safe value (e.g., no sanitization
+     * is available or possible.)
      *
-     * @param {string} type The kind of context in which this value is to be used.
+     * @param {string} type The context in which this value is to be used (such as `$sce.HTML`).
      * @param {*} maybeTrusted The result of a prior {@link ng.$sceDelegate#trustAs
-     *     `$sceDelegate.trustAs`} call.
-     * @returns {*} The value the was originally provided to {@link ng.$sceDelegate#trustAs
-     *     `$sceDelegate.trustAs`} if valid in this context.  Otherwise, throws an exception.
+     *     `$sceDelegate.trustAs`} call, or anything else (which will not be considered trusted.)
+     * @return {*} A version of the value that's safe to use in the given context, or throws an
+     *     exception if this is impossible.
      */
     function getTrusted(type, maybeTrusted) {
       if (maybeTrusted === null || isUndefined(maybeTrusted) || maybeTrusted === '') {
         return maybeTrusted;
       }
       var constructor = (byType.hasOwnProperty(type) ? byType[type] : null);
+      // If maybeTrusted is a trusted class instance or subclass instance, then unwrap and return
+      // as-is.
       if (constructor && maybeTrusted instanceof constructor) {
         return maybeTrusted.$$unwrapTrustedValue();
       }
-      // If we get here, then we may only take one of two actions.
-      // 1. sanitize the value for the requested type, or
-      // 2. throw an exception.
+      // Otherwise, if we get here, then we may either make it safe, or throw an exception. This
+      // depends on the context: some are sanitizatible (HTML), some use whitelists (RESOURCE_URL),
+      // some are impossible to do (JS). This step isn't implemented for CSS and URL, as AngularJS
+      // has no corresponding sinks.
       if (type === SCE_CONTEXTS.RESOURCE_URL) {
+        // RESOURCE_URL uses a whitelist.
         if (isResourceUrlAllowedByPolicy(maybeTrusted)) {
           return maybeTrusted;
         } else {
@@ -18902,8 +19297,10 @@ function $SceDelegateProvider() {
               maybeTrusted.toString());
         }
       } else if (type === SCE_CONTEXTS.HTML) {
+        // htmlSanitizer throws its own error when no sanitizer is available.
         return htmlSanitizer(maybeTrusted);
       }
+      // Default error when the $sce service has no way to make the input safe.
       throw $sceMinErr('unsafe', 'Attempting to use an unsafe value in a safe context.');
     }
 
@@ -18939,21 +19336,27 @@ function $SceDelegateProvider() {
  *
  * # Strict Contextual Escaping
  *
- * Strict Contextual Escaping (SCE) is a mode in which AngularJS requires bindings in certain
- * contexts to result in a value that is marked as safe to use for that context.  One example of
- * such a context is binding arbitrary html controlled by the user via `ng-bind-html`.  We refer
- * to these contexts as privileged or SCE contexts.
+ * Strict Contextual Escaping (SCE) is a mode in which AngularJS constrains bindings to only render
+ * trusted values. Its goal is to assist in writing code in a way that (a) is secure by default, and
+ * (b) makes auditing for security vulnerabilities such as XSS, clickjacking, etc. a lot easier.
  *
- * As of version 1.2, Angular ships with SCE enabled by default.
+ * ## Overview
  *
- * Note:  When enabled (the default), IE<11 in quirks mode is not supported.  In this mode, IE<11 allow
- * one to execute arbitrary javascript by the use of the expression() syntax.  Refer
- * <http://blogs.msdn.com/b/ie/archive/2008/10/16/ending-expressions.aspx> to learn more about them.
- * You can ensure your document is in standards mode and not quirks mode by adding `<!doctype html>`
- * to the top of your HTML document.
+ * To systematically block XSS security bugs, AngularJS treats all values as untrusted by default in
+ * HTML or sensitive URL bindings. When binding untrusted values, AngularJS will automatically
+ * run security checks on them (sanitizations, whitelists, depending on context), or throw when it
+ * cannot guarantee the security of the result. That behavior depends strongly on contexts: HTML
+ * can be sanitized, but template URLs cannot, for instance.
  *
- * SCE assists in writing code in a way that (a) is secure by default and (b) makes auditing for
- * security vulnerabilities such as XSS, clickjacking, etc. a lot easier.
+ * To illustrate this, consider the `ng-bind-html` directive. It renders its value directly as HTML:
+ * we call that the *context*. When given an untrusted input, AngularJS will attempt to sanitize it
+ * before rendering if a sanitizer is available, and throw otherwise. To bypass sanitization and
+ * render the input as-is, you will need to mark it as trusted for that context before attempting
+ * to bind it.
+ *
+ * As of version 1.2, AngularJS ships with SCE enabled by default.
+ *
+ * ## In practice
  *
  * Here's an example of a binding in a privileged context:
  *
@@ -18963,10 +19366,10 @@ function $SceDelegateProvider() {
  * ```
  *
  * Notice that `ng-bind-html` is bound to `userHtml` controlled by the user.  With SCE
- * disabled, this application allows the user to render arbitrary HTML into the DIV.
- * In a more realistic example, one may be rendering user comments, blog articles, etc. via
- * bindings.  (HTML is just one example of a context where rendering user controlled input creates
- * security vulnerabilities.)
+ * disabled, this application allows the user to render arbitrary HTML into the DIV, which would
+ * be an XSS security bug. In a more realistic example, one may be rendering user comments, blog
+ * articles, etc. via bindings. (HTML is just one example of a context where rendering user
+ * controlled input creates security vulnerabilities.)
  *
  * For the case of HTML, you might use a library, either on the client side, or on the server side,
  * to sanitize unsafe HTML before binding to the value and rendering it in the document.
@@ -18976,25 +19379,29 @@ function $SceDelegateProvider() {
  * ensure that you didn't accidentally delete the line that sanitized the value, or renamed some
  * properties/fields and forgot to update the binding to the sanitized value?
  *
- * To be secure by default, you want to ensure that any such bindings are disallowed unless you can
- * determine that something explicitly says it's safe to use a value for binding in that
- * context.  You can then audit your code (a simple grep would do) to ensure that this is only done
- * for those values that you can easily tell are safe - because they were received from your server,
- * sanitized by your library, etc.  You can organize your codebase to help with this - perhaps
- * allowing only the files in a specific directory to do this.  Ensuring that the internal API
- * exposed by that code doesn't markup arbitrary values as safe then becomes a more manageable task.
+ * To be secure by default, AngularJS makes sure bindings go through that sanitization, or
+ * any similar validation process, unless there's a good reason to trust the given value in this
+ * context.  That trust is formalized with a function call. This means that as a developer, you
+ * can assume all untrusted bindings are safe. Then, to audit your code for binding security issues,
+ * you just need to ensure the values you mark as trusted indeed are safe - because they were
+ * received from your server, sanitized by your library, etc. You can organize your codebase to
+ * help with this - perhaps allowing only the files in a specific directory to do this.
+ * Ensuring that the internal API exposed by that code doesn't markup arbitrary values as safe then
+ * becomes a more manageable task.
  *
  * In the case of AngularJS' SCE service, one uses {@link ng.$sce#trustAs $sce.trustAs}
  * (and shorthand methods such as {@link ng.$sce#trustAsHtml $sce.trustAsHtml}, etc.) to
- * obtain values that will be accepted by SCE / privileged contexts.
- *
+ * build the trusted versions of your values.
  *
  * ## How does it work?
  *
  * In privileged contexts, directives and code will bind to the result of {@link ng.$sce#getTrusted
- * $sce.getTrusted(context, value)} rather than to the value directly.  Directives use {@link
- * ng.$sce#parseAs $sce.parseAs} rather than `$parse` to watch attribute bindings, which performs the
- * {@link ng.$sce#getTrusted $sce.getTrusted} behind the scenes on non-constant literals.
+ * $sce.getTrusted(context, value)} rather than to the value directly.  Think of this function as
+ * a way to enforce the required security context in your data sink. Directives use {@link
+ * ng.$sce#parseAs $sce.parseAs} rather than `$parse` to watch attribute bindings, which performs
+ * the {@link ng.$sce#getTrusted $sce.getTrusted} behind the scenes on non-constant literals. Also,
+ * when binding without directives, AngularJS will understand the context of your bindings
+ * automatically.
  *
  * As an example, {@link ng.directive:ngBindHtml ngBindHtml} uses {@link
  * ng.$sce#parseAsHtml $sce.parseAsHtml(binding expression)}.  Here's the actual code (slightly
@@ -19035,11 +19442,12 @@ function $SceDelegateProvider() {
  * It's important to remember that SCE only applies to interpolation expressions.
  *
  * If your expressions are constant literals, they're automatically trusted and you don't need to
- * call `$sce.trustAs` on them (remember to include the `ngSanitize` module) (e.g.
- * `<div ng-bind-html="'<b>implicitly trusted</b>'"></div>`) just works.
- *
- * Additionally, `a[href]` and `img[src]` automatically sanitize their URLs and do not pass them
- * through {@link ng.$sce#getTrusted $sce.getTrusted}.  SCE doesn't play a role here.
+ * call `$sce.trustAs` on them (e.g.
+ * `<div ng-bind-html="'<b>implicitly trusted</b>'"></div>`) just works. The `$sceDelegate` will
+ * also use the `$sanitize` service if it is available when binding untrusted values to
+ * `$sce.HTML` context. AngularJS provides an implementation in `angular-sanitize.js`, and if you
+ * wish to use it, you will also need to depend on the {@link ngSanitize `ngSanitize`} module in
+ * your application.
  *
  * The included {@link ng.$sceDelegate $sceDelegate} comes with sane defaults to allow you to load
  * templates in `ng-include` from your application's domain without having to even know about SCE.
@@ -19057,11 +19465,17 @@ function $SceDelegateProvider() {
  *
  * | Context             | Notes          |
  * |---------------------|----------------|
- * | `$sce.HTML`         | For HTML that's safe to source into the application.  The {@link ng.directive:ngBindHtml ngBindHtml} directive uses this context for bindings. If an unsafe value is encountered and the {@link ngSanitize $sanitize} module is present this will sanitize the value instead of throwing an error. |
- * | `$sce.CSS`          | For CSS that's safe to source into the application.  Currently unused.  Feel free to use it in your own directives. |
- * | `$sce.URL`          | For URLs that are safe to follow as links.  Currently unused (`<a href=` and `<img src=` sanitize their urls and don't constitute an SCE context. |
- * | `$sce.RESOURCE_URL` | For URLs that are not only safe to follow as links, but whose contents are also safe to include in your application.  Examples include `ng-include`, `src` / `ngSrc` bindings for tags other than `IMG`, `VIDEO`, `AUDIO`, `SOURCE`, and `TRACK` (e.g. `IFRAME`, `OBJECT`, etc.)  <br><br>Note that `$sce.RESOURCE_URL` makes a stronger statement about the URL than `$sce.URL` does and therefore contexts requiring values trusted for `$sce.RESOURCE_URL` can be used anywhere that values trusted for `$sce.URL` are required. |
- * | `$sce.JS`           | For JavaScript that is safe to execute in your application's context.  Currently unused.  Feel free to use it in your own directives. |
+ * | `$sce.HTML`         | For HTML that's safe to source into the application.  The {@link ng.directive:ngBindHtml ngBindHtml} directive uses this context for bindings. If an unsafe value is encountered, and the {@link ngSanitize.$sanitize $sanitize} service is available (implemented by the {@link ngSanitize ngSanitize} module) this will sanitize the value instead of throwing an error. |
+ * | `$sce.CSS`          | For CSS that's safe to source into the application.  Currently, no bindings require this context. Feel free to use it in your own directives. |
+ * | `$sce.URL`          | For URLs that are safe to follow as links.  Currently unused (`<a href=`, `<img src=`, and some others sanitize their urls and don't constitute an SCE context.) |
+ * | `$sce.RESOURCE_URL` | For URLs that are not only safe to follow as links, but whose contents are also safe to include in your application.  Examples include `ng-include`, `src` / `ngSrc` bindings for tags other than `IMG`, `VIDEO`, `AUDIO`, `SOURCE`, and `TRACK` (e.g. `IFRAME`, `OBJECT`, etc.)  <br><br>Note that `$sce.RESOURCE_URL` makes a stronger statement about the URL than `$sce.URL` does (it's not just the URL that matters, but also what is at the end of it), and therefore contexts requiring values trusted for `$sce.RESOURCE_URL` can be used anywhere that values trusted for `$sce.URL` are required. |
+ * | `$sce.JS`           | For JavaScript that is safe to execute in your application's context.  Currently, no bindings require this context.  Feel free to use it in your own directives. |
+ *
+ *
+ * Be aware that `a[href]` and `img[src]` automatically sanitize their URLs and do not pass them
+ * through {@link ng.$sce#getTrusted $sce.getTrusted}. There's no CSS-, URL-, or JS-context bindings
+ * in AngularJS currently, so their corresponding `$sce.trustAs` functions aren't useful yet. This
+ * might evolve.
  *
  * ## Format of items in {@link ng.$sceDelegateProvider#resourceUrlWhitelist resourceUrlWhitelist}/{@link ng.$sceDelegateProvider#resourceUrlBlacklist Blacklist} <a name="resourceUrlPatternItem"></a>
  *
@@ -19180,14 +19594,15 @@ function $SceDelegateProvider() {
  * for little coding overhead.  It will be much harder to take an SCE disabled application and
  * either secure it on your own or enable SCE at a later stage.  It might make sense to disable SCE
  * for cases where you have a lot of existing code that was written before SCE was introduced and
- * you're migrating them a module at a time.
+ * you're migrating them a module at a time. Also do note that this is an app-wide setting, so if
+ * you are writing a library, you will cause security bugs applications using it.
  *
  * That said, here's how you can completely disable SCE:
  *
  * ```
  * angular.module('myAppWithSceDisabledmyApp', []).config(function($sceProvider) {
  *   // Completely disable SCE.  For demonstration purposes only!
- *   // Do not use in new projects.
+ *   // Do not use in new projects or libraries.
  *   $sceProvider.enabled(false);
  * });
  * ```
@@ -19202,8 +19617,8 @@ function $SceProvider() {
    * @name $sceProvider#enabled
    * @kind function
    *
-   * @param {boolean=} value If provided, then enables/disables SCE.
-   * @return {boolean} true if SCE is enabled, false otherwise.
+   * @param {boolean=} value If provided, then enables/disables SCE application-wide.
+   * @return {boolean} True if SCE is enabled, false otherwise.
    *
    * @description
    * Enables/disables SCE and returns the current value.
@@ -19257,9 +19672,9 @@ function $SceProvider() {
    *     getTrusted($sce.RESOURCE_URL, value) succeeding implies that getTrusted($sce.URL, value)
    *     will also succeed.
    *
-   * Inheritance happens to capture this in a natural way.  In some future, we
-   * may not use inheritance anymore.  That is OK because no code outside of
-   * sce.js and sceSpecs.js would need to be aware of this detail.
+   * Inheritance happens to capture this in a natural way. In some future, we may not use
+   * inheritance anymore. That is OK because no code outside of sce.js and sceSpecs.js would need to
+   * be aware of this detail.
    */
 
   this.$get = ['$parse', '$sceDelegate', function(
@@ -19281,8 +19696,8 @@ function $SceProvider() {
      * @name $sce#isEnabled
      * @kind function
      *
-     * @return {Boolean} true if SCE is enabled, false otherwise.  If you want to set the value, you
-     * have to do it at module config time on {@link ng.$sceProvider $sceProvider}.
+     * @return {Boolean} True if SCE is enabled, false otherwise.  If you want to set the value, you
+     *     have to do it at module config time on {@link ng.$sceProvider $sceProvider}.
      *
      * @description
      * Returns a boolean indicating if SCE is enabled.
@@ -19309,14 +19724,14 @@ function $SceProvider() {
      * wraps the expression in a call to {@link ng.$sce#getTrusted $sce.getTrusted(*type*,
      * *result*)}
      *
-     * @param {string} type The kind of SCE context in which this result will be used.
+     * @param {string} type The SCE context in which this result will be used.
      * @param {string} expression String expression to compile.
-     * @returns {function(context, locals)} a function which represents the compiled expression:
+     * @return {function(context, locals)} A function which represents the compiled expression:
      *
-     *    * `context` – `{object}` – an object against which any expressions embedded in the strings
-     *      are evaluated against (typically a scope object).
-     *    * `locals` – `{object=}` – local variables context object, useful for overriding values in
-     *      `context`.
+     *    * `context` – `{object}` – an object against which any expressions embedded in the
+     *      strings are evaluated against (typically a scope object).
+     *    * `locals` – `{object=}` – local variables context object, useful for overriding values
+     *      in `context`.
      */
     sce.parseAs = function sceParseAs(type, expr) {
       var parsed = $parse(expr);
@@ -19334,18 +19749,18 @@ function $SceProvider() {
      * @name $sce#trustAs
      *
      * @description
-     * Delegates to {@link ng.$sceDelegate#trustAs `$sceDelegate.trustAs`}.  As such,
-     * returns an object that is trusted by angular for use in specified strict contextual
-     * escaping contexts (such as ng-bind-html, ng-include, any src attribute
-     * interpolation, any dom event binding attribute interpolation such as for onclick,  etc.)
-     * that uses the provided value.  See * {@link ng.$sce $sce} for enabling strict contextual
-     * escaping.
+     * Delegates to {@link ng.$sceDelegate#trustAs `$sceDelegate.trustAs`}. As such, returns a
+     * wrapped object that represents your value, and the trust you have in its safety for the given
+     * context. AngularJS can then use that value as-is in bindings of the specified secure context.
+     * This is used in bindings for `ng-bind-html`, `ng-include`, and most `src` attribute
+     * interpolations. See {@link ng.$sce $sce} for strict contextual escaping.
      *
-     * @param {string} type The kind of context in which this value is safe for use.  e.g. url,
-     *   resourceUrl, html, js and css.
-     * @param {*} value The value that that should be considered trusted/safe.
-     * @returns {*} A value that can be used to stand in for the provided `value` in places
-     * where Angular expects a $sce.trustAs() return value.
+     * @param {string} type The context in which this value is safe for use, e.g. `$sce.URL`,
+     *     `$sce.RESOURCE_URL`, `$sce.HTML`, `$sce.JS` or `$sce.CSS`.
+     *
+     * @param {*} value The value that that should be considered trusted.
+     * @return {*} A wrapped version of value that can be used as a trusted variant of your `value`
+     *     in the context you specified.
      */
 
     /**
@@ -19356,11 +19771,23 @@ function $SceProvider() {
      * Shorthand method.  `$sce.trustAsHtml(value)` →
      *     {@link ng.$sceDelegate#trustAs `$sceDelegate.trustAs($sce.HTML, value)`}
      *
-     * @param {*} value The value to trustAs.
-     * @returns {*} An object that can be passed to {@link ng.$sce#getTrustedHtml
-     *     $sce.getTrustedHtml(value)} to obtain the original value.  (privileged directives
-     *     only accept expressions that are either literal constants or are the
-     *     return value of {@link ng.$sce#trustAs $sce.trustAs}.)
+     * @param {*} value The value to mark as trusted for `$sce.HTML` context.
+     * @return {*} A wrapped version of value that can be used as a trusted variant of your `value`
+     *     in `$sce.HTML` context (like `ng-bind-html`).
+     */
+
+    /**
+     * @ngdoc method
+     * @name $sce#trustAsCss
+     *
+     * @description
+     * Shorthand method.  `$sce.trustAsCss(value)` →
+     *     {@link ng.$sceDelegate#trustAs `$sceDelegate.trustAs($sce.CSS, value)`}
+     *
+     * @param {*} value The value to mark as trusted for `$sce.CSS` context.
+     * @return {*} A wrapped version of value that can be used as a trusted variant
+     *     of your `value` in `$sce.CSS` context. This context is currently unused, so there are
+     *     almost no reasons to use this function so far.
      */
 
     /**
@@ -19371,11 +19798,10 @@ function $SceProvider() {
      * Shorthand method.  `$sce.trustAsUrl(value)` →
      *     {@link ng.$sceDelegate#trustAs `$sceDelegate.trustAs($sce.URL, value)`}
      *
-     * @param {*} value The value to trustAs.
-     * @returns {*} An object that can be passed to {@link ng.$sce#getTrustedUrl
-     *     $sce.getTrustedUrl(value)} to obtain the original value.  (privileged directives
-     *     only accept expressions that are either literal constants or are the
-     *     return value of {@link ng.$sce#trustAs $sce.trustAs}.)
+     * @param {*} value The value to mark as trusted for `$sce.URL` context.
+     * @return {*} A wrapped version of value that can be used as a trusted variant of your `value`
+     *     in `$sce.URL` context. That context is currently unused, so there are almost no reasons
+     *     to use this function so far.
      */
 
     /**
@@ -19386,11 +19812,10 @@ function $SceProvider() {
      * Shorthand method.  `$sce.trustAsResourceUrl(value)` →
      *     {@link ng.$sceDelegate#trustAs `$sceDelegate.trustAs($sce.RESOURCE_URL, value)`}
      *
-     * @param {*} value The value to trustAs.
-     * @returns {*} An object that can be passed to {@link ng.$sce#getTrustedResourceUrl
-     *     $sce.getTrustedResourceUrl(value)} to obtain the original value.  (privileged directives
-     *     only accept expressions that are either literal constants or are the return
-     *     value of {@link ng.$sce#trustAs $sce.trustAs}.)
+     * @param {*} value The value to mark as trusted for `$sce.RESOURCE_URL` context.
+     * @return {*} A wrapped version of value that can be used as a trusted variant of your `value`
+     *     in `$sce.RESOURCE_URL` context (template URLs in `ng-include`, most `src` attribute
+     *     bindings, ...)
      */
 
     /**
@@ -19401,11 +19826,10 @@ function $SceProvider() {
      * Shorthand method.  `$sce.trustAsJs(value)` →
      *     {@link ng.$sceDelegate#trustAs `$sceDelegate.trustAs($sce.JS, value)`}
      *
-     * @param {*} value The value to trustAs.
-     * @returns {*} An object that can be passed to {@link ng.$sce#getTrustedJs
-     *     $sce.getTrustedJs(value)} to obtain the original value.  (privileged directives
-     *     only accept expressions that are either literal constants or are the
-     *     return value of {@link ng.$sce#trustAs $sce.trustAs}.)
+     * @param {*} value The value to mark as trusted for `$sce.JS` context.
+     * @return {*} A wrapped version of value that can be used as a trusted variant of your `value`
+     *     in `$sce.JS` context. That context is currently unused, so there are almost no reasons to
+     *     use this function so far.
      */
 
     /**
@@ -19414,16 +19838,17 @@ function $SceProvider() {
      *
      * @description
      * Delegates to {@link ng.$sceDelegate#getTrusted `$sceDelegate.getTrusted`}.  As such,
-     * takes the result of a {@link ng.$sce#trustAs `$sce.trustAs`}() call and returns the
-     * originally supplied value if the queried context type is a supertype of the created type.
-     * If this condition isn't satisfied, throws an exception.
+     * takes any input, and either returns a value that's safe to use in the specified context,
+     * or throws an exception. This function is aware of trusted values created by the `trustAs`
+     * function and its shorthands, and when contexts are appropriate, returns the unwrapped value
+     * as-is. Finally, this function can also throw when there is no way to turn `maybeTrusted` in a
+     * safe value (e.g., no sanitization is available or possible.)
      *
-     * @param {string} type The kind of context in which this value is to be used.
-     * @param {*} maybeTrusted The result of a prior {@link ng.$sce#trustAs `$sce.trustAs`}
-     *                         call.
-     * @returns {*} The value the was originally provided to
-     *              {@link ng.$sce#trustAs `$sce.trustAs`} if valid in this context.
-     *              Otherwise, throws an exception.
+     * @param {string} type The context in which this value is to be used.
+     * @param {*} maybeTrusted The result of a prior {@link ng.$sce#trustAs
+     *     `$sce.trustAs`} call, or anything else (which will not be considered trusted.)
+     * @return {*} A version of the value that's safe to use in the given context, or throws an
+     *     exception if this is impossible.
      */
 
     /**
@@ -19435,7 +19860,7 @@ function $SceProvider() {
      *     {@link ng.$sceDelegate#getTrusted `$sceDelegate.getTrusted($sce.HTML, value)`}
      *
      * @param {*} value The value to pass to `$sce.getTrusted`.
-     * @returns {*} The return value of `$sce.getTrusted($sce.HTML, value)`
+     * @return {*} The return value of `$sce.getTrusted($sce.HTML, value)`
      */
 
     /**
@@ -19447,7 +19872,7 @@ function $SceProvider() {
      *     {@link ng.$sceDelegate#getTrusted `$sceDelegate.getTrusted($sce.CSS, value)`}
      *
      * @param {*} value The value to pass to `$sce.getTrusted`.
-     * @returns {*} The return value of `$sce.getTrusted($sce.CSS, value)`
+     * @return {*} The return value of `$sce.getTrusted($sce.CSS, value)`
      */
 
     /**
@@ -19459,7 +19884,7 @@ function $SceProvider() {
      *     {@link ng.$sceDelegate#getTrusted `$sceDelegate.getTrusted($sce.URL, value)`}
      *
      * @param {*} value The value to pass to `$sce.getTrusted`.
-     * @returns {*} The return value of `$sce.getTrusted($sce.URL, value)`
+     * @return {*} The return value of `$sce.getTrusted($sce.URL, value)`
      */
 
     /**
@@ -19471,7 +19896,7 @@ function $SceProvider() {
      *     {@link ng.$sceDelegate#getTrusted `$sceDelegate.getTrusted($sce.RESOURCE_URL, value)`}
      *
      * @param {*} value The value to pass to `$sceDelegate.getTrusted`.
-     * @returns {*} The return value of `$sce.getTrusted($sce.RESOURCE_URL, value)`
+     * @return {*} The return value of `$sce.getTrusted($sce.RESOURCE_URL, value)`
      */
 
     /**
@@ -19483,7 +19908,7 @@ function $SceProvider() {
      *     {@link ng.$sceDelegate#getTrusted `$sceDelegate.getTrusted($sce.JS, value)`}
      *
      * @param {*} value The value to pass to `$sce.getTrusted`.
-     * @returns {*} The return value of `$sce.getTrusted($sce.JS, value)`
+     * @return {*} The return value of `$sce.getTrusted($sce.JS, value)`
      */
 
     /**
@@ -19495,12 +19920,12 @@ function $SceProvider() {
      *     {@link ng.$sce#parseAs `$sce.parseAs($sce.HTML, value)`}
      *
      * @param {string} expression String expression to compile.
-     * @returns {function(context, locals)} a function which represents the compiled expression:
+     * @return {function(context, locals)} A function which represents the compiled expression:
      *
-     *    * `context` – `{object}` – an object against which any expressions embedded in the strings
-     *      are evaluated against (typically a scope object).
-     *    * `locals` – `{object=}` – local variables context object, useful for overriding values in
-     *      `context`.
+     *    * `context` – `{object}` – an object against which any expressions embedded in the
+     *      strings are evaluated against (typically a scope object).
+     *    * `locals` – `{object=}` – local variables context object, useful for overriding values
+     *      in `context`.
      */
 
     /**
@@ -19512,12 +19937,12 @@ function $SceProvider() {
      *     {@link ng.$sce#parseAs `$sce.parseAs($sce.CSS, value)`}
      *
      * @param {string} expression String expression to compile.
-     * @returns {function(context, locals)} a function which represents the compiled expression:
+     * @return {function(context, locals)} A function which represents the compiled expression:
      *
-     *    * `context` – `{object}` – an object against which any expressions embedded in the strings
-     *      are evaluated against (typically a scope object).
-     *    * `locals` – `{object=}` – local variables context object, useful for overriding values in
-     *      `context`.
+     *    * `context` – `{object}` – an object against which any expressions embedded in the
+     *      strings are evaluated against (typically a scope object).
+     *    * `locals` – `{object=}` – local variables context object, useful for overriding values
+     *      in `context`.
      */
 
     /**
@@ -19529,12 +19954,12 @@ function $SceProvider() {
      *     {@link ng.$sce#parseAs `$sce.parseAs($sce.URL, value)`}
      *
      * @param {string} expression String expression to compile.
-     * @returns {function(context, locals)} a function which represents the compiled expression:
+     * @return {function(context, locals)} A function which represents the compiled expression:
      *
-     *    * `context` – `{object}` – an object against which any expressions embedded in the strings
-     *      are evaluated against (typically a scope object).
-     *    * `locals` – `{object=}` – local variables context object, useful for overriding values in
-     *      `context`.
+     *    * `context` – `{object}` – an object against which any expressions embedded in the
+     *      strings are evaluated against (typically a scope object).
+     *    * `locals` – `{object=}` – local variables context object, useful for overriding values
+     *      in `context`.
      */
 
     /**
@@ -19546,12 +19971,12 @@ function $SceProvider() {
      *     {@link ng.$sce#parseAs `$sce.parseAs($sce.RESOURCE_URL, value)`}
      *
      * @param {string} expression String expression to compile.
-     * @returns {function(context, locals)} a function which represents the compiled expression:
+     * @return {function(context, locals)} A function which represents the compiled expression:
      *
-     *    * `context` – `{object}` – an object against which any expressions embedded in the strings
-     *      are evaluated against (typically a scope object).
-     *    * `locals` – `{object=}` – local variables context object, useful for overriding values in
-     *      `context`.
+     *    * `context` – `{object}` – an object against which any expressions embedded in the
+     *      strings are evaluated against (typically a scope object).
+     *    * `locals` – `{object=}` – local variables context object, useful for overriding values
+     *      in `context`.
      */
 
     /**
@@ -19563,12 +19988,12 @@ function $SceProvider() {
      *     {@link ng.$sce#parseAs `$sce.parseAs($sce.JS, value)`}
      *
      * @param {string} expression String expression to compile.
-     * @returns {function(context, locals)} a function which represents the compiled expression:
+     * @return {function(context, locals)} A function which represents the compiled expression:
      *
-     *    * `context` – `{object}` – an object against which any expressions embedded in the strings
-     *      are evaluated against (typically a scope object).
-     *    * `locals` – `{object=}` – local variables context object, useful for overriding values in
-     *      `context`.
+     *    * `context` – `{object}` – an object against which any expressions embedded in the
+     *      strings are evaluated against (typically a scope object).
+     *    * `locals` – `{object=}` – local variables context object, useful for overriding values
+     *      in `context`.
      */
 
     // Shorthand delegations.
@@ -19994,7 +20419,7 @@ function $TimeoutProvider() {
     timeout.cancel = function(promise) {
       if (promise && promise.$$timeoutId in deferreds) {
         // Timeout cancels should not report an unhandled promise.
-        deferreds[promise.$$timeoutId].promise.catch(noop);
+        markQExceptionHandled(deferreds[promise.$$timeoutId].promise);
         deferreds[promise.$$timeoutId].reject('canceled');
         delete deferreds[promise.$$timeoutId];
         return $browser.defer.cancel(promise.$$timeoutId);
@@ -20026,7 +20451,7 @@ var originUrl = urlResolve(window.location.href);
  * URL will be resolved into an absolute URL in the context of the application document.
  * Parsing means that the anchor node's host, hostname, protocol, port, pathname and related
  * properties are all populated to reflect the normalized URL.  This approach has wide
- * compatibility - Safari 1+, Mozilla 1+, Opera 7+,e etc.  See
+ * compatibility - Safari 1+, Mozilla 1+ etc.  See
  * http://www.aptana.com/reference/html/api/HTMLAnchorElement.html
  *
  * Implementation Notes for IE
@@ -20392,6 +20817,9 @@ function $FilterProvider($provide) {
  * Selects a subset of items from `array` and returns it as a new array.
  *
  * @param {Array} array The source array.
+ * <div class="alert alert-info">
+ *   **Note**: If the array contains objects that reference themselves, filtering is not possible.
+ * </div>
  * @param {string|Object|function()} expression The predicate to be used for selecting items from
  *   `array`.
  *
@@ -20425,8 +20853,9 @@ function $FilterProvider($provide) {
  *     The final result is an array of those elements that the predicate returned true for.
  *
  * @param {function(actual, expected)|true|false} [comparator] Comparator which is used in
- *     determining if the expected value (from the filter expression) and actual value (from
- *     the object in the array) should be considered a match.
+ *     determining if values retrieved using `expression` (when it is not a function) should be
+ *     considered a match based on the expected value (from the filter expression) and actual
+ *     value (from the object in the array).
  *
  *   Can be one of:
  *
@@ -20609,7 +21038,10 @@ function deepCompare(actual, expected, comparator, anyPropertyKey, matchAgainstA
       var key;
       if (matchAgainstAnyProp) {
         for (key in actual) {
-          if ((key.charAt(0) !== '$') && deepCompare(actual[key], expected, comparator, anyPropertyKey, true)) {
+          // Under certain, rare, circumstances, key may not be a string and `charAt` will be undefined
+          // See: https://github.com/angular/angular.js/issues/15644
+          if (key.charAt && (key.charAt(0) !== '$') &&
+              deepCompare(actual[key], expected, comparator, anyPropertyKey, true)) {
             return true;
           }
         }
@@ -21118,7 +21550,7 @@ var DATE_FORMATS = {
      GGGG: longEraGetter
 };
 
-var DATE_FORMATS_SPLIT = /((?:[^yMLdHhmsaZEwG']+)|(?:'(?:[^']|'')*')|(?:E+|y+|M+|L+|d+|H+|h+|m+|s+|a|Z|G+|w+))(.*)/,
+var DATE_FORMATS_SPLIT = /((?:[^yMLdHhmsaZEwG']+)|(?:'(?:[^']|'')*')|(?:E+|y+|M+|L+|d+|H+|h+|m+|s+|a|Z|G+|w+))([\s\S]*)/,
     NUMBER_STRING = /^-?\d+$/;
 
 /**
@@ -21176,6 +21608,8 @@ var DATE_FORMATS_SPLIT = /((?:[^yMLdHhmsaZEwG']+)|(?:'(?:[^']|'')*')|(?:E+|y+|M+
  *   `format` string can contain literal values. These need to be escaped by surrounding with single quotes (e.g.
  *   `"h 'in the morning'"`). In order to output a single quote, escape it - i.e., two single quotes in a sequence
  *   (e.g. `"h 'o''clock'"`).
+ *
+ *   Any other characters in the `format` string will be output as-is.
  *
  * @param {(Date|number|string)} date Date to format either as Date object, milliseconds (string or
  *    number) or various ISO 8601 datetime string formats (e.g. yyyy-MM-ddTHH:mm:ss.sssZ and its
@@ -21339,6 +21773,9 @@ function jsonFilter() {
  * @kind function
  * @description
  * Converts string to lowercase.
+ *
+ * See the {@link ng.uppercase uppercase filter documentation} for a functionally identical example.
+ *
  * @see angular.lowercase
  */
 var lowercaseFilter = valueFn(lowercase);
@@ -21350,7 +21787,23 @@ var lowercaseFilter = valueFn(lowercase);
  * @kind function
  * @description
  * Converts string to uppercase.
- * @see angular.uppercase
+ * @example
+   <example module="uppercaseFilterExample" name="filter-uppercase">
+     <file name="index.html">
+       <script>
+         angular.module('uppercaseFilterExample', [])
+           .controller('ExampleController', ['$scope', function($scope) {
+             $scope.title = 'This is a title';
+           }]);
+       </script>
+       <div ng-controller="ExampleController">
+         <!-- This title should be formatted normally -->
+         <h1>{{title}}</h1>
+         <!-- This title should be capitalized -->
+         <h1>{{title | uppercase}}</h1>
+       </div>
+     </file>
+   </example>
  */
 var uppercaseFilter = valueFn(uppercase);
 
@@ -21538,6 +21991,9 @@ function sliceFn(input, begin, end) {
  * specified predicates can distinguish between two items, `orderBy` will automatically introduce a
  * dummy predicate that returns the item's index as `value`.
  * (If you are using a custom comparator, make sure it can handle this predicate as well.)
+ *
+ * If a custom comparator still can't distinguish between two items, then they will be sorted based
+ * on their index using the built-in comparator.
  *
  * Finally, in an attempt to simplify things, if a predicate returns an object as the extracted
  * value for an item, `orderBy` will try to convert that object to a primitive value, before passing
@@ -22085,7 +22541,7 @@ function orderByFilter($parse) {
         }
       }
 
-      return compare(v1.tieBreaker, v2.tieBreaker) * descending;
+      return (compare(v1.tieBreaker, v2.tieBreaker) || defaultCompare(v1.tieBreaker, v2.tieBreaker)) * descending;
     }
   };
 
@@ -22688,17 +23144,23 @@ function nullFormRenameControl(control, name) {
  * @property {boolean} $dirty True if user has already interacted with the form.
  * @property {boolean} $valid True if all of the containing forms and controls are valid.
  * @property {boolean} $invalid True if at least one containing control or form is invalid.
- * @property {boolean} $pending True if at least one containing control or form is pending.
  * @property {boolean} $submitted True if user has submitted the form even if its invalid.
  *
- * @property {Object} $error Is an object hash, containing references to controls or
- *  forms with failing validators, where:
+ * @property {Object} $pending An object hash, containing references to controls or forms with
+ *  pending validators, where:
+ *
+ *  - keys are validations tokens (error names).
+ *  - values are arrays of controls or forms that have a pending validator for the given error name.
+ *
+ * See {@link form.FormController#$error $error} for a list of built-in validation tokens.
+ *
+ * @property {Object} $error An object hash, containing references to controls or forms with failing
+ *  validators, where:
  *
  *  - keys are validation tokens (error names),
- *  - values are arrays of controls or forms that have a failing validator for given error name.
+ *  - values are arrays of controls or forms that have a failing validator for the given error name.
  *
  *  Built-in validation tokens:
- *
  *  - `email`
  *  - `max`
  *  - `maxlength`
@@ -22944,9 +23406,24 @@ FormController.prototype = {
  * @name form.FormController#$setValidity
  *
  * @description
- * Sets the validity of a form control.
+ * Change the validity state of the form, and notify the parent form (if any).
  *
- * This method will also propagate to parent forms.
+ * Application developers will rarely need to call this method directly. It is used internally, by
+ * {@link ngModel.NgModelController#$setValidity NgModelController.$setValidity()}, to propagate a
+ * control's validity state to the parent `FormController`.
+ *
+ * @param {string} validationErrorKey Name of the validator. The `validationErrorKey` will be
+ *        assigned to either `$error[validationErrorKey]` or `$pending[validationErrorKey]` (for
+ *        unfulfilled `$asyncValidators`), so that it is available for data-binding. The
+ *        `validationErrorKey` should be in camelCase and will get converted into dash-case for
+ *        class name. Example: `myError` will result in `ng-valid-my-error` and
+ *        `ng-invalid-my-error` classes and can be bound to as `{{ someForm.$error.myError }}`.
+ * @param {boolean} isValid Whether the current state is valid (true), invalid (false), pending
+ *        (undefined),  or skipped (null). Pending is used for unfulfilled `$asyncValidators`.
+ *        Skipped is used by AngularJS when validators do not run because of parse errors and when
+ *        `$asyncValidators` do not run because any of the `$validators` failed.
+ * @param {NgModelController | FormController} controller - The controller whose validity state is
+ *        triggering the change.
  */
 addSetValidityMethod({
   clazz: FormController,
@@ -27886,32 +28363,57 @@ var ngModelMinErr = minErr('ngModel');
  * @property {*} $viewValue The actual value from the control's view. For `input` elements, this is a
  * String. See {@link ngModel.NgModelController#$setViewValue} for information about when the $viewValue
  * is set.
+ *
  * @property {*} $modelValue The value in the model that the control is bound to.
+ *
  * @property {Array.<Function>} $parsers Array of functions to execute, as a pipeline, whenever
-       the control reads value from the DOM. The functions are called in array order, each passing
-       its return value through to the next. The last return value is forwarded to the
-       {@link ngModel.NgModelController#$validators `$validators`} collection.
+ *  the control updates the ngModelController with a new {@link ngModel.NgModelController#$viewValue
+    `$viewValue`} from the DOM, usually via user input.
+    See {@link ngModel.NgModelController#$setViewValue `$setViewValue()`} for a detailed lifecycle explanation.
+    Note that the `$parsers` are not called when the bound ngModel expression changes programmatically.
 
-Parsers are used to sanitize / convert the {@link ngModel.NgModelController#$viewValue
-`$viewValue`}.
+  The functions are called in array order, each passing
+    its return value through to the next. The last return value is forwarded to the
+    {@link ngModel.NgModelController#$validators `$validators`} collection.
 
-Returning `undefined` from a parser means a parse error occurred. In that case,
-no {@link ngModel.NgModelController#$validators `$validators`} will run and the `ngModel`
-will be set to `undefined` unless {@link ngModelOptions `ngModelOptions.allowInvalid`}
-is set to `true`. The parse error is stored in `ngModel.$error.parse`.
+  Parsers are used to sanitize / convert the {@link ngModel.NgModelController#$viewValue
+    `$viewValue`}.
+
+  Returning `undefined` from a parser means a parse error occurred. In that case,
+    no {@link ngModel.NgModelController#$validators `$validators`} will run and the `ngModel`
+    will be set to `undefined` unless {@link ngModelOptions `ngModelOptions.allowInvalid`}
+    is set to `true`. The parse error is stored in `ngModel.$error.parse`.
+
+  This simple example shows a parser that would convert text input value to lowercase:
+ * ```js
+ * function parse(value) {
+ *   if (value) {
+ *     return value.toLowerCase();
+ *   }
+ * }
+ * ngModelController.$parsers.push(parse);
+ * ```
 
  *
  * @property {Array.<Function>} $formatters Array of functions to execute, as a pipeline, whenever
-       the model value changes. The functions are called in reverse array order, each passing the value through to the
-       next. The last return value is used as the actual DOM value.
-       Used to format / convert values for display in the control.
+    the bound ngModel expression changes programmatically. The `$formatters` are not called when the
+    value of the control is changed by user interaction.
+
+  Formatters are used to format / convert the {@link ngModel.NgModelController#$modelValue
+    `$modelValue`} for display in the control.
+
+  The functions are called in reverse array order, each passing the value through to the
+    next. The last return value is used as the actual DOM value.
+
+  This simple example shows a formatter that would convert the model value to uppercase:
+
  * ```js
- * function formatter(value) {
+ * function format(value) {
  *   if (value) {
  *     return value.toUpperCase();
  *   }
  * }
- * ngModel.$formatters.push(formatter);
+ * ngModel.$formatters.push(format);
  * ```
  *
  * @property {Object.<string, function>} $validators A collection of validators that are applied
@@ -28111,7 +28613,9 @@ function NgModelController($scope, $exceptionHandler, $attr, $element, $parse, $
 
   this.$$currentValidationRunId = 0;
 
-  this.$$scope = $scope;
+  // https://github.com/angular/angular.js/issues/15833
+  // Prevent `$$scope` from being iterated over by `copy` when NgModelController is deep watched
+  Object.defineProperty(this, '$$scope', {value: $scope});
   this.$$attr = $attr;
   this.$$element = $element;
   this.$$animate = $animate;
@@ -28619,9 +29123,10 @@ NgModelController.prototype = {
    *
    * When `$setViewValue` is called, the new `value` will be staged for committing through the `$parsers`
    * and `$validators` pipelines. If there are no special {@link ngModelOptions} specified then the staged
-   * value sent directly for processing, finally to be applied to `$modelValue` and then the
-   * **expression** specified in the `ng-model` attribute. Lastly, all the registered change listeners,
-   * in the `$viewChangeListeners` list, are called.
+   * value is sent directly for processing through the `$parsers` pipeline. After this, the `$validators` and
+   * `$asyncValidators` are called and the value is applied to `$modelValue`.
+   * Finally, the value is set to the **expression** specified in the `ng-model` attribute and
+   * all the registered change listeners, in the `$viewChangeListeners` list are called.
    *
    * In case the {@link ng.directive:ngModelOptions ngModelOptions} directive is used with `updateOn`
    * and the `default` trigger is not listed, all those actions will remain pending until one of the
@@ -28719,8 +29224,8 @@ function setupModelWatcher(ctrl) {
   //    -> scope value did not change since the last digest as
   //       ng-change executes in apply phase
   // 4. view should be changed back to 'a'
-  ctrl.$$scope.$watch(function ngModelWatch() {
-    var modelValue = ctrl.$$ngModelGet(ctrl.$$scope);
+  ctrl.$$scope.$watch(function ngModelWatch(scope) {
+    var modelValue = ctrl.$$ngModelGet(scope);
 
     // if scope model value and ngModel value are out of sync
     // TODO(perf): why not move this to the action fn?
@@ -28769,7 +29274,7 @@ function setupModelWatcher(ctrl) {
  *        (for unfulfilled `$asyncValidators`), so that it is available for data-binding.
  *        The `validationErrorKey` should be in camelCase and will get converted into dash-case
  *        for class name. Example: `myError` will result in `ng-valid-my-error` and `ng-invalid-my-error`
- *        class and can be bound to as  `{{someForm.someControl.$error.myError}}` .
+ *        classes and can be bound to as `{{ someForm.someControl.$error.myError }}`.
  * @param {boolean} isValid Whether the current state is valid (true), invalid (false), pending (undefined),
  *                          or skipped (null). Pending is used for unfulfilled `$asyncValidators`.
  *                          Skipped is used by Angular when validators do not run because of parse errors and
@@ -29548,13 +30053,8 @@ var ngOptionsMinErr = minErr('ngOptions');
  * is not matched against any `<option>` and the `<select>` appears as having no selected value.
  *
  *
- * @param {string} ngModel Assignable angular expression to data-bind to.
- * @param {string=} name Property name of the form under which the control is published.
- * @param {string=} required The control is considered valid only if value is entered.
- * @param {string=} ngRequired Adds `required` attribute and `required` validation constraint to
- *    the element when the ngRequired expression evaluates to true. Use `ngRequired` instead of
- *    `required` when you want to data-bind to the `required` attribute.
- * @param {comprehension_expression=} ngOptions in one of the following forms:
+ * @param {string} ngModel Assignable AngularJS expression to data-bind to.
+ * @param {comprehension_expression} ngOptions in one of the following forms:
  *
  *   * for array data sources:
  *     * `label` **`for`** `value` **`in`** `array`
@@ -29593,6 +30093,13 @@ var ngOptionsMinErr = minErr('ngOptions');
  *      used to identify the objects in the array. The `trackexpr` will most likely refer to the
  *     `value` variable (e.g. `value.propertyName`). With this the selection is preserved
  *      even when the options are recreated (e.g. reloaded from the server).
+ * @param {string=} name Property name of the form under which the control is published.
+ * @param {string=} required The control is considered valid only if value is entered.
+ * @param {string=} ngRequired Adds `required` attribute and `required` validation constraint to
+ *    the element when the ngRequired expression evaluates to true. Use `ngRequired` instead of
+ *    `required` when you want to data-bind to the `required` attribute.
+ * @param {string=} ngAttrSize sets the size of the select element dynamically. Uses the
+ * {@link guide/interpolation#-ngattr-for-binding-to-arbitrary-attributes ngAttr} directive.
  *
  * @example
     <example module="selectExample" name="select">
@@ -29842,7 +30349,8 @@ var ngOptionsDirective = ['$compile', '$document', '$parse', function($compile, 
   }
 
 
-  // we can't just jqLite('<option>') since jqLite is not smart enough
+  // Support: IE 9 only
+  // We can't just jqLite('<option>') since jqLite is not smart enough
   // to create it in <select> and IE barfs otherwise.
   var optionTemplate = window.document.createElement('option'),
       optGroupTemplate = window.document.createElement('optgroup');
@@ -29862,6 +30370,9 @@ var ngOptionsDirective = ['$compile', '$document', '$parse', function($compile, 
           break;
         }
       }
+
+      // The empty option will be compiled and rendered before we first generate the options
+      selectElement.empty();
 
       var providedEmptyOption = !!selectCtrl.emptyOption;
 
@@ -29884,12 +30395,15 @@ var ngOptionsDirective = ['$compile', '$document', '$parse', function($compile, 
       if (!multiple) {
 
         selectCtrl.writeValue = function writeNgOptionsValue(value) {
-          var selectedOption = options.selectValueMap[selectElement.val()];
+          // The options might not be defined yet when ngModel tries to render
+          if (!options) return;
+
+          var selectedOption = selectElement[0].options[selectElement[0].selectedIndex];
           var option = options.getOptionFromViewValue(value);
 
           // Make sure to remove the selected attribute from the previously selected option
           // Otherwise, screen readers might get confused
-          if (selectedOption) selectedOption.element.removeAttribute('selected');
+          if (selectedOption) selectedOption.removeAttribute('selected');
 
           if (option) {
             // Don't update the option when it is already selected.
@@ -29899,7 +30413,6 @@ var ngOptionsDirective = ['$compile', '$document', '$parse', function($compile, 
 
             if (selectElement[0].value !== option.selectValue) {
               selectCtrl.removeUnknownOption();
-              selectCtrl.unselectEmptyOption();
 
               selectElement[0].value = option.selectValue;
               option.element.selected = true;
@@ -29907,14 +30420,7 @@ var ngOptionsDirective = ['$compile', '$document', '$parse', function($compile, 
 
             option.element.setAttribute('selected', 'selected');
           } else {
-
-            if (providedEmptyOption) {
-              selectCtrl.selectEmptyOption();
-            } else if (selectCtrl.unknownOption.parent().length) {
-              selectCtrl.updateUnknownOption(value);
-            } else {
-              selectCtrl.renderUnknownOption(value);
-            }
+            selectCtrl.selectUnknownOrEmptyOption(value);
           }
         };
 
@@ -29943,9 +30449,11 @@ var ngOptionsDirective = ['$compile', '$document', '$parse', function($compile, 
       } else {
 
         selectCtrl.writeValue = function writeNgOptionsMultiple(values) {
+          // The options might not be defined yet when ngModel tries to render
+          if (!options) return;
+
           // Only set `<option>.selected` if necessary, in order to prevent some browsers from
           // scrolling to `<option>` elements that are outside the `<select>` element's viewport.
-
           var selectedOptions = values && values.map(getAndUpdateSelectedOption) || [];
 
           options.items.forEach(function(option) {
@@ -29987,12 +30495,10 @@ var ngOptionsDirective = ['$compile', '$document', '$parse', function($compile, 
 
       if (providedEmptyOption) {
 
-        // we need to remove it before calling selectElement.empty() because otherwise IE will
-        // remove the label from the element. wtf?
-        selectCtrl.emptyOption.remove();
-
         // compile the element since there might be bindings in it
         $compile(selectCtrl.emptyOption)(scope);
+
+        selectElement.prepend(selectCtrl.emptyOption);
 
         if (selectCtrl.emptyOption[0].nodeType === NODE_TYPE_COMMENT) {
           // This means the empty option has currently no actual DOM node, probably because
@@ -30011,8 +30517,12 @@ var ngOptionsDirective = ['$compile', '$document', '$parse', function($compile, 
               ngModelCtrl.$render();
 
               optionEl.on('$destroy', function() {
+                var needsRerender = selectCtrl.$isEmptyOptionSelected();
+
                 selectCtrl.hasEmptyOption = false;
                 selectCtrl.emptyOption = undefined;
+
+                if (needsRerender) ngModelCtrl.$render();
               });
             }
           };
@@ -30024,12 +30534,6 @@ var ngOptionsDirective = ['$compile', '$document', '$parse', function($compile, 
         }
 
       }
-
-      selectElement.empty();
-
-      // We need to do this here to ensure that the options object is defined
-      // when we first hit it in writeNgOptionsValue
-      updateOptions();
 
       // We will re-render the option elements if the option values or labels change
       scope.$watchCollection(ngOptions.getWatchables, updateOptions);
@@ -30054,7 +30558,8 @@ var ngOptionsDirective = ['$compile', '$document', '$parse', function($compile, 
       function updateOptionElement(option, element) {
         option.element = element;
         element.disabled = option.disabled;
-        // NOTE: The label must be set before the value, otherwise IE10/11/EDGE create unresponsive
+        // Support: IE 11 only, Edge 12-13 only
+        // NOTE: The label must be set before the value, otherwise IE 11 & Edge create unresponsive
         // selects in certain circumstances when multiple selects are next to each other and display
         // the option list in listbox style, i.e. the select is [multiple], or specifies a [size].
         // See https://github.com/angular/angular.js/issues/11314 for more info.
@@ -30089,11 +30594,6 @@ var ngOptionsDirective = ['$compile', '$document', '$parse', function($compile, 
         options = ngOptions.getOptions();
 
         var groupElementMap = {};
-
-        // Ensure that the empty option is always there if it was explicitly provided
-        if (providedEmptyOption) {
-          selectElement.prepend(selectCtrl.emptyOption);
-        }
 
         options.items.forEach(function addOption(option) {
           var groupElement;
@@ -30139,7 +30639,6 @@ var ngOptionsDirective = ['$compile', '$document', '$parse', function($compile, 
             ngModelCtrl.$render();
           }
         }
-
       }
   }
 
@@ -30404,6 +30903,7 @@ var ngPluralizeDirective = ['$locale', '$interpolate', '$log', function($locale,
  * @ngdoc directive
  * @name ngRepeat
  * @multiElement
+ * @restrict A
  *
  * @description
  * The `ngRepeat` directive instantiates a template once per item from a collection. Each template
@@ -30826,7 +31326,7 @@ var ngRepeatDirective = ['$parse', '$animate', '$compile', function($parse, $ani
         // Store a list of elements from previous run. This is a hash where key is the item from the
         // iterator, and the value is objects with following properties.
         //   - scope: bound scope
-        //   - element: previous element.
+        //   - clone: previous element.
         //   - index: position
         //
         // We are using no-proto object so that we don't need to guard against inherited props via
@@ -31928,13 +32428,135 @@ var scriptDirective = ['$templateCache', function($templateCache) {
 
 var noopNgModelController = { $setViewValue: noop, $render: noop };
 
+function setOptionSelectedStatus(optionEl, value) {
+  optionEl.prop('selected', value);
+  /**
+   * When unselecting an option, setting the property to null / false should be enough
+   * However, screenreaders might react to the selected attribute instead, see
+   * https://github.com/angular/angular.js/issues/14419
+   * Note: "selected" is a boolean attr and will be removed when the "value" arg in attr() is false
+   * or null
+   */
+  optionEl.attr('selected', value);
+}
+
 /**
  * @ngdoc type
  * @name  select.SelectController
+ *
  * @description
- * The controller for the `<select>` directive. This provides support for reading
- * and writing the selected value(s) of the control and also coordinates dynamically
- * added `<option>` elements, perhaps by an `ngRepeat` directive.
+ * The controller for the {@link ng.select select} directive. The controller exposes
+ * a few utility methods that can be used to augment the behavior of a regular or an
+ * {@link ng.ngOptions ngOptions} select element.
+ *
+ * @example
+ * ### Set a custom error when the unknown option is selected
+ *
+ * This example sets a custom error "unknownValue" on the ngModelController
+ * when the select element's unknown option is selected, i.e. when the model is set to a value
+ * that is not matched by any option.
+ *
+ * <example name="select-unknown-value-error" module="staticSelect">
+ * <file name="index.html">
+ * <div ng-controller="ExampleController">
+ *   <form name="myForm">
+ *     <label for="testSelect"> Single select: </label><br>
+ *     <select name="testSelect" ng-model="selected" unknown-value-error>
+ *       <option value="option-1">Option 1</option>
+ *       <option value="option-2">Option 2</option>
+ *     </select><br>
+ *     <span ng-if="myForm.testSelect.$error.unknownValue">Error: The current model doesn't match any option</span>
+ *
+ *     <button ng-click="forceUnknownOption()">Force unknown option</button><br>
+ *   </form>
+ * </div>
+ * </file>
+ * <file name="app.js">
+ *  angular.module('staticSelect', [])
+ *    .controller('ExampleController', ['$scope', function($scope) {
+ *      $scope.selected = null;
+ *
+ *      $scope.forceUnknownOption = function() {
+ *        $scope.selected = 'nonsense';
+ *      };
+ *   }])
+ *   .directive('unknownValueError', function() {
+ *     return {
+ *       require: ['ngModel', 'select'],
+ *       link: function(scope, element, attrs, ctrls) {
+ *         var ngModelCtrl = ctrls[0];
+ *         var selectCtrl = ctrls[1];
+ *
+ *         ngModelCtrl.$validators.unknownValue = function(modelValue, viewValue) {
+ *           if (selectCtrl.$isUnknownOptionSelected()) {
+ *             return false;
+ *           }
+ *
+ *           return true;
+ *         };
+ *       }
+ *
+ *     };
+ *   });
+ * </file>
+ *</example>
+ *
+ *
+ * @example
+ * ### Set the "required" error when the unknown option is selected.
+ *
+ * By default, the "required" error on the ngModelController is only set on a required select
+ * when the empty option is selected. This example adds a custom directive that also sets the
+ * error when the unknown option is selected.
+ *
+ * <example name="select-unknown-value-required" module="staticSelect">
+ * <file name="index.html">
+ * <div ng-controller="ExampleController">
+ *   <form name="myForm">
+ *     <label for="testSelect"> Select: </label><br>
+ *     <select name="testSelect" ng-model="selected" unknown-value-required>
+ *       <option value="option-1">Option 1</option>
+ *       <option value="option-2">Option 2</option>
+ *     </select><br>
+ *     <span ng-if="myForm.testSelect.$error.required">Error: Please select a value</span><br>
+ *
+ *     <button ng-click="forceUnknownOption()">Force unknown option</button><br>
+ *   </form>
+ * </div>
+ * </file>
+ * <file name="app.js">
+ *  angular.module('staticSelect', [])
+ *    .controller('ExampleController', ['$scope', function($scope) {
+ *      $scope.selected = null;
+ *
+ *      $scope.forceUnknownOption = function() {
+ *        $scope.selected = 'nonsense';
+ *      };
+ *   }])
+ *   .directive('unknownValueRequired', function() {
+ *     return {
+ *       priority: 1, // This directive must run after the required directive has added its validator
+ *       require: ['ngModel', 'select'],
+ *       link: function(scope, element, attrs, ctrls) {
+ *         var ngModelCtrl = ctrls[0];
+ *         var selectCtrl = ctrls[1];
+ *
+ *         var originalRequiredValidator = ngModelCtrl.$validators.required;
+ *
+ *         ngModelCtrl.$validators.required = function() {
+ *           if (attrs.required && selectCtrl.$isUnknownOptionSelected()) {
+ *             return false;
+ *           }
+ *
+ *           return originalRequiredValidator.apply(this, arguments);
+ *         };
+ *       }
+ *     };
+ *   });
+ * </file>
+ *</example>
+ *
+ *
  */
 var SelectController =
         ['$element', '$scope', /** @this */ function($element, $scope) {
@@ -31952,15 +32574,18 @@ var SelectController =
   // does not match any of the options. When it is rendered the value of the unknown
   // option is '? XXX ?' where XXX is the hashKey of the value that is not known.
   //
+  // Support: IE 9 only
   // We can't just jqLite('<option>') since jqLite is not smart enough
   // to create it in <select> and IE barfs otherwise.
   self.unknownOption = jqLite(window.document.createElement('option'));
 
-  // The empty option is an option with the value '' that te application developer can
-  // provide inside the select. When the model changes to a value that doesn't match an option,
-  // it is selected - so if an empty option is provided, no unknown option is generated.
-  // However, the empty option is not removed when the model matches an option. It is always selectable
-  // and indicates that a "null" selection has been made.
+  // The empty option is an option with the value '' that the application developer can
+  // provide inside the select. It is always selectable and indicates that a "null" selection has
+  // been made by the user.
+  // If the select has an empty option, and the model of the select is set to "undefined" or "null",
+  // the empty option is selected.
+  // If the model is set to a different unmatched value, the unknown option is rendered and
+  // selected, i.e both are present, because a "null" selection and an unknown value are different.
   self.hasEmptyOption = false;
   self.emptyOption = undefined;
 
@@ -31968,14 +32593,14 @@ var SelectController =
     var unknownVal = self.generateUnknownOptionValue(val);
     self.unknownOption.val(unknownVal);
     $element.prepend(self.unknownOption);
-    setOptionAsSelected(self.unknownOption);
+    setOptionSelectedStatus(self.unknownOption, true);
     $element.val(unknownVal);
   };
 
   self.updateUnknownOption = function(val) {
     var unknownVal = self.generateUnknownOptionValue(val);
     self.unknownOption.val(unknownVal);
-    setOptionAsSelected(self.unknownOption);
+    setOptionSelectedStatus(self.unknownOption, true);
     $element.val(unknownVal);
   };
 
@@ -31990,13 +32615,13 @@ var SelectController =
   self.selectEmptyOption = function() {
     if (self.emptyOption) {
       $element.val('');
-      setOptionAsSelected(self.emptyOption);
+      setOptionSelectedStatus(self.emptyOption, true);
     }
   };
 
   self.unselectEmptyOption = function() {
     if (self.hasEmptyOption) {
-      self.emptyOption.removeAttr('selected');
+      setOptionSelectedStatus(self.emptyOption, false);
     }
   };
 
@@ -32026,7 +32651,7 @@ var SelectController =
     // Make sure to remove the selected attribute from the previously selected option
     // Otherwise, screen readers might get confused
     var currentlySelectedOption = $element[0].options[$element[0].selectedIndex];
-    if (currentlySelectedOption) currentlySelectedOption.removeAttribute('selected');
+    if (currentlySelectedOption) setOptionSelectedStatus(jqLite(currentlySelectedOption), false);
 
     if (self.hasOption(value)) {
       self.removeUnknownOption();
@@ -32036,16 +32661,9 @@ var SelectController =
 
       // Set selected attribute and property on selected option for screen readers
       var selectedOption = $element[0].options[$element[0].selectedIndex];
-      setOptionAsSelected(jqLite(selectedOption));
+      setOptionSelectedStatus(jqLite(selectedOption), true);
     } else {
-      if (value == null && self.emptyOption) {
-        self.removeUnknownOption();
-        self.selectEmptyOption();
-      } else if (self.unknownOption.parent().length) {
-        self.updateUnknownOption(value);
-      } else {
-        self.renderUnknownOption(value);
-      }
+      self.selectUnknownOrEmptyOption(value);
     }
   };
 
@@ -32088,6 +32706,59 @@ var SelectController =
     return !!optionsMap.get(value);
   };
 
+  /**
+   * @ngdoc method
+   * @name select.SelectController#$hasEmptyOption
+   *
+   * @description
+   *
+   * Returns `true` if the select element currently has an empty option
+   * element, i.e. an option that signifies that the select is empty / the selection is null.
+   *
+   */
+  self.$hasEmptyOption = function() {
+    return self.hasEmptyOption;
+  };
+
+  /**
+   * @ngdoc method
+   * @name select.SelectController#$isUnknownOptionSelected
+   *
+   * @description
+   *
+   * Returns `true` if the select element's unknown option is selected. The unknown option is added
+   * and automatically selected whenever the select model doesn't match any option.
+   *
+   */
+  self.$isUnknownOptionSelected = function() {
+    // Presence of the unknown option means it is selected
+    return $element[0].options[0] === self.unknownOption[0];
+  };
+
+  /**
+   * @ngdoc method
+   * @name select.SelectController#$isEmptyOptionSelected
+   *
+   * @description
+   *
+   * Returns `true` if the select element has an empty option and this empty option is currently
+   * selected. Returns `false` if the select element has no empty option or it is not selected.
+   *
+   */
+  self.$isEmptyOptionSelected = function() {
+    return self.hasEmptyOption && $element[0].options[$element[0].selectedIndex] === self.emptyOption[0];
+  };
+
+  self.selectUnknownOrEmptyOption = function(value) {
+    if (value == null && self.emptyOption) {
+      self.removeUnknownOption();
+      self.selectEmptyOption();
+    } else if (self.unknownOption.parent().length) {
+      self.updateUnknownOption(value);
+    } else {
+      self.renderUnknownOption(value);
+    }
+  };
 
   var renderScheduled = false;
   function scheduleRender() {
@@ -32216,11 +32887,6 @@ var SelectController =
       }
     });
   };
-
-  function setOptionAsSelected(optionEl) {
-    optionEl.prop('selected', true); // needed for IE
-    optionEl.attr('selected', true);
-  }
 }];
 
 /**
@@ -32240,6 +32906,9 @@ var SelectController =
  * to the model identified by the `ngModel` directive. With static or repeated options, this is
  * the content of the `value` attribute or the textContent of the `<option>`, if the value attribute is missing.
  * Value and textContent can be interpolated.
+ *
+ * The {@link select.SelectController select controller} exposes utility functions that can be used
+ * to manipulate the select's behavior.
  *
  * ## Matching model and option values
  *
@@ -32290,6 +32959,21 @@ var SelectController =
  *    interaction with the select element.
  * @param {string=} ngOptions sets the options that the select is populated with and defines what is
  * set on the model on selection. See {@link ngOptions `ngOptions`}.
+ * @param {string=} ngAttrSize sets the size of the select element dynamically. Uses the
+ * {@link guide/interpolation#-ngattr-for-binding-to-arbitrary-attributes ngAttr} directive.
+ *
+ *
+ * @knownIssue
+ *
+ * In Firefox, the select model is only updated when the select element is blurred. For example,
+ * when switching between options with the keyboard, the select model is only set to the
+ * currently selected option when the select is blurred, e.g via tab key or clicking the mouse
+ * outside the select.
+ *
+ * This is due to an ambiguity in the select element specification. See the
+ * [issue on the Firefox bug tracker](https://bugzilla.mozilla.org/show_bug.cgi?id=126379)
+ * for more information, and this
+ * [Github comment for a workaround](https://github.com/angular/angular.js/issues/9134#issuecomment-130800488)
  *
  * @example
  * ### Simple `select` elements with static options
@@ -32531,8 +33215,21 @@ var selectDirective = function() {
         // Write value now needs to set the selected property of each matching option
         selectCtrl.writeValue = function writeMultipleValue(value) {
           forEach(element.find('option'), function(option) {
-            option.selected = !!value && (includes(value, option.value) ||
-                                          includes(value, selectCtrl.selectValueMap[option.value]));
+            var shouldBeSelected = !!value && (includes(value, option.value) ||
+                                               includes(value, selectCtrl.selectValueMap[option.value]));
+            var currentlySelected = option.selected;
+
+            // Support: IE 9-11 only, Edge 12-15+
+            // In IE and Edge adding options to the selection via shift+click/UP/DOWN
+            // will de-select already selected options if "selected" on those options was set
+            // more than once (i.e. when the options were already selected)
+            // So we only modify the selected property if necessary.
+            // Note: this behavior cannot be replicated via unit tests because it only shows in the
+            // actual user interface.
+            if (shouldBeSelected !== currentlySelected) {
+              setOptionSelectedStatus(jqLite(option), shouldBeSelected);
+            }
+
           });
         };
 
@@ -33133,7 +33830,7 @@ $provide.value("$locale", {
 
 !window.angular.$$csp().noInlineStyle && window.angular.element(document.head).prepend('<style type="text/css">@charset "UTF-8";[ng\\:cloak],[ng-cloak],[data-ng-cloak],[x-ng-cloak],.ng-cloak,.x-ng-cloak,.ng-hide:not(.ng-hide-animate){display:none !important;}ng\\:form{display:block;}.ng-animate-shim{visibility:hidden;}.ng-anchor{position:absolute;}</style>');
 /**
- * @license AngularJS v1.6.2
+ * @license AngularJS v1.6.5
  * (c) 2010-2017 Google, Inc. http://angularjs.org
  * License: MIT
  */
@@ -35428,14 +36125,17 @@ var $$AnimateQueueProvider = ['$animateProvider', /** @this */ function($animate
 
     var callbackRegistry = Object.create(null);
 
-    // remember that the classNameFilter is set during the provider/config
-    // stage therefore we can optimize here and setup a helper function
+    // remember that the `customFilter`/`classNameFilter` are set during the
+    // provider/config stage therefore we can optimize here and setup helper functions
+    var customFilter = $animateProvider.customFilter();
     var classNameFilter = $animateProvider.classNameFilter();
-    var isAnimatableClassName = !classNameFilter
-              ? function() { return true; }
-              : function(className) {
-                return classNameFilter.test(className);
-              };
+    var returnTrue = function() { return true; };
+
+    var isAnimatableByFilter = customFilter || returnTrue;
+    var isAnimatableClassName = !classNameFilter ? returnTrue : function(node, options) {
+      var className = [node.getAttribute('class'), options.addClass, options.removeClass].join(' ');
+      return classNameFilter.test(className);
+    };
 
     var applyAnimationClasses = applyAnimationClassesFactory($$jqLite);
 
@@ -35613,16 +36313,13 @@ var $$AnimateQueueProvider = ['$animateProvider', /** @this */ function($animate
         options.to = null;
       }
 
-      // there are situations where a directive issues an animation for
-      // a jqLite wrapper that contains only comment nodes... If this
-      // happens then there is no way we can perform an animation
-      if (!node) {
-        close();
-        return runner;
-      }
-
-      var className = [node.getAttribute('class'), options.addClass, options.removeClass].join(' ');
-      if (!isAnimatableClassName(className)) {
+      // If animations are hard-disabled for the whole application there is no need to continue.
+      // There are also situations where a directive issues an animation for a jqLite wrapper that
+      // contains only comment nodes. In this case, there is no way we can perform an animation.
+      if (!animationsEnabled ||
+          !node ||
+          !isAnimatableByFilter(node, event, initialOptions) ||
+          !isAnimatableClassName(node, options)) {
         close();
         return runner;
       }
@@ -35631,12 +36328,11 @@ var $$AnimateQueueProvider = ['$animateProvider', /** @this */ function($animate
 
       var documentHidden = $$isDocumentHidden();
 
-      // this is a hard disable of all animations for the application or on
-      // the element itself, therefore  there is no need to continue further
-      // past this point if not enabled
+      // This is a hard disable of all animations the element itself, therefore  there is no need to
+      // continue further past this point if not enabled
       // Animations are also disabled if the document is currently hidden (page is not visible
       // to the user), because browsers slow down or do not flush calls to requestAnimationFrame
-      var skipAnimations = !animationsEnabled || documentHidden || disabledElementsLookup.get(node);
+      var skipAnimations = documentHidden || disabledElementsLookup.get(node);
       var existingAnimation = (!skipAnimations && activeAnimationsLookup.get(node)) || {};
       var hasExistingAnimation = !!existingAnimation.state;
 
@@ -36687,6 +37383,10 @@ var ngAnimateSwapDirective = ['$animate', '$rootScope', function($animate, $root
  *   /&#42; As of 1.4.4, this must always be set: it signals ngAnimate
  *     to not accidentally inherit a delay property from another CSS class &#42;/
  *   transition-duration: 0s;
+ *
+ *   /&#42; if you are using animations instead of transitions you should configure as follows:
+ *     animation-delay: 0.1s;
+ *     animation-duration: 0s; &#42;/
  * }
  * .my-animation.ng-enter.ng-enter-active {
  *   /&#42; standard transition styles &#42;/
@@ -37266,6 +37966,7 @@ angular.module('ngAnimate', [], function initAngularHelpers() {
   isFunction  = angular.isFunction;
   isElement   = angular.isElement;
 })
+  .info({ angularVersion: '1.6.5' })
   .directive('ngAnimateSwap', ngAnimateSwapDirective)
 
   .directive('ngAnimateChildren', $$AnimateChildrenDirective)
@@ -37284,7 +37985,7 @@ angular.module('ngAnimate', [], function initAngularHelpers() {
 })(window, window.angular);
 
 /**
- * @license AngularJS v1.6.2
+ * @license AngularJS v1.6.5
  * (c) 2010-2017 Google, Inc. http://angularjs.org
  * License: MIT
  */
@@ -37344,6 +38045,7 @@ angular.module('ngAnimate', [], function initAngularHelpers() {
  * {@link guide/accessibility Developer Guide}.
  */
 var ngAriaModule = angular.module('ngAria', ['ng']).
+                        info({ angularVersion: '1.6.5' }).
                         provider('$aria', $AriaProvider);
 
 /**
@@ -37686,751 +38388,11 @@ ngAriaModule.directive('ngShow', ['$aria', function($aria) {
 
 })(window, window.angular);
 
-/**
- * @license AngularJS v1.6.2
- * (c) 2010-2017 Google, Inc. http://angularjs.org
- * License: MIT
- */
-(function(window, angular) {'use strict';
-
-var forEach;
-var isArray;
-var isString;
-var jqLite;
-
-/**
- * @ngdoc module
- * @name ngMessages
- * @description
- *
- * The `ngMessages` module provides enhanced support for displaying messages within templates
- * (typically within forms or when rendering message objects that return key/value data).
- * Instead of relying on JavaScript code and/or complex ng-if statements within your form template to
- * show and hide error messages specific to the state of an input field, the `ngMessages` and
- * `ngMessage` directives are designed to handle the complexity, inheritance and priority
- * sequencing based on the order of how the messages are defined in the template.
- *
- * Currently, the ngMessages module only contains the code for the `ngMessages`, `ngMessagesInclude`
- * `ngMessage` and `ngMessageExp` directives.
- *
- * # Usage
- * The `ngMessages` directive allows keys in a key/value collection to be associated with a child element
- * (or 'message') that will show or hide based on the truthiness of that key's value in the collection. A common use
- * case for `ngMessages` is to display error messages for inputs using the `$error` object exposed by the
- * {@link ngModel ngModel} directive.
- *
- * The child elements of the `ngMessages` directive are matched to the collection keys by a `ngMessage` or
- * `ngMessageExp` directive. The value of these attributes must match a key in the collection that is provided by
- * the `ngMessages` directive.
- *
- * Consider the following example, which illustrates a typical use case of `ngMessages`. Within the form `myForm` we
- * have a text input named `myField` which is bound to the scope variable `field` using the {@link ngModel ngModel}
- * directive.
- *
- * The `myField` field is a required input of type `email` with a maximum length of 15 characters.
- *
- * ```html
- * <form name="myForm">
- *   <label>
- *     Enter text:
- *     <input type="email" ng-model="field" name="myField" required maxlength="15" />
- *   </label>
- *   <div ng-messages="myForm.myField.$error" role="alert">
- *     <div ng-message="required">Please enter a value for this field.</div>
- *     <div ng-message="email">This field must be a valid email address.</div>
- *     <div ng-message="maxlength">This field can be at most 15 characters long.</div>
- *   </div>
- * </form>
- * ```
- *
- * In order to show error messages corresponding to `myField` we first create an element with an `ngMessages` attribute
- * set to the `$error` object owned by the `myField` input in our `myForm` form.
- *
- * Within this element we then create separate elements for each of the possible errors that `myField` could have.
- * The `ngMessage` attribute is used to declare which element(s) will appear for which error - for example,
- * setting `ng-message="required"` specifies that this particular element should be displayed when there
- * is no value present for the required field `myField` (because the key `required` will be `true` in the object
- * `myForm.myField.$error`).
- *
- * ### Message order
- *
- * By default, `ngMessages` will only display one message for a particular key/value collection at any time. If more
- * than one message (or error) key is currently true, then which message is shown is determined by the order of messages
- * in the HTML template code (messages declared first are prioritised). This mechanism means the developer does not have
- * to prioritize messages using custom JavaScript code.
- *
- * Given the following error object for our example (which informs us that the field `myField` currently has both the
- * `required` and `email` errors):
- *
- * ```javascript
- * <!-- keep in mind that ngModel automatically sets these error flags -->
- * myField.$error = { required : true, email: true, maxlength: false };
- * ```
- * The `required` message will be displayed to the user since it appears before the `email` message in the DOM.
- * Once the user types a single character, the `required` message will disappear (since the field now has a value)
- * but the `email` message will be visible because it is still applicable.
- *
- * ### Displaying multiple messages at the same time
- *
- * While `ngMessages` will by default only display one error element at a time, the `ng-messages-multiple` attribute can
- * be applied to the `ngMessages` container element to cause it to display all applicable error messages at once:
- *
- * ```html
- * <!-- attribute-style usage -->
- * <div ng-messages="myForm.myField.$error" ng-messages-multiple>...</div>
- *
- * <!-- element-style usage -->
- * <ng-messages for="myForm.myField.$error" multiple>...</ng-messages>
- * ```
- *
- * ## Reusing and Overriding Messages
- * In addition to prioritization, ngMessages also allows for including messages from a remote or an inline
- * template. This allows for generic collection of messages to be reused across multiple parts of an
- * application.
- *
- * ```html
- * <script type="text/ng-template" id="error-messages">
- *   <div ng-message="required">This field is required</div>
- *   <div ng-message="minlength">This field is too short</div>
- * </script>
- *
- * <div ng-messages="myForm.myField.$error" role="alert">
- *   <div ng-messages-include="error-messages"></div>
- * </div>
- * ```
- *
- * However, including generic messages may not be useful enough to match all input fields, therefore,
- * `ngMessages` provides the ability to override messages defined in the remote template by redefining
- * them within the directive container.
- *
- * ```html
- * <!-- a generic template of error messages known as "my-custom-messages" -->
- * <script type="text/ng-template" id="my-custom-messages">
- *   <div ng-message="required">This field is required</div>
- *   <div ng-message="minlength">This field is too short</div>
- * </script>
- *
- * <form name="myForm">
- *   <label>
- *     Email address
- *     <input type="email"
- *            id="email"
- *            name="myEmail"
- *            ng-model="email"
- *            minlength="5"
- *            required />
- *   </label>
- *   <!-- any ng-message elements that appear BEFORE the ng-messages-include will
- *        override the messages present in the ng-messages-include template -->
- *   <div ng-messages="myForm.myEmail.$error" role="alert">
- *     <!-- this required message has overridden the template message -->
- *     <div ng-message="required">You did not enter your email address</div>
- *
- *     <!-- this is a brand new message and will appear last in the prioritization -->
- *     <div ng-message="email">Your email address is invalid</div>
- *
- *     <!-- and here are the generic error messages -->
- *     <div ng-messages-include="my-custom-messages"></div>
- *   </div>
- * </form>
- * ```
- *
- * In the example HTML code above the message that is set on required will override the corresponding
- * required message defined within the remote template. Therefore, with particular input fields (such
- * email addresses, date fields, autocomplete inputs, etc...), specialized error messages can be applied
- * while more generic messages can be used to handle other, more general input errors.
- *
- * ## Dynamic Messaging
- * ngMessages also supports using expressions to dynamically change key values. Using arrays and
- * repeaters to list messages is also supported. This means that the code below will be able to
- * fully adapt itself and display the appropriate message when any of the expression data changes:
- *
- * ```html
- * <form name="myForm">
- *   <label>
- *     Email address
- *     <input type="email"
- *            name="myEmail"
- *            ng-model="email"
- *            minlength="5"
- *            required />
- *   </label>
- *   <div ng-messages="myForm.myEmail.$error" role="alert">
- *     <div ng-message="required">You did not enter your email address</div>
- *     <div ng-repeat="errorMessage in errorMessages">
- *       <!-- use ng-message-exp for a message whose key is given by an expression -->
- *       <div ng-message-exp="errorMessage.type">{{ errorMessage.text }}</div>
- *     </div>
- *   </div>
- * </form>
- * ```
- *
- * The `errorMessage.type` expression can be a string value or it can be an array so
- * that multiple errors can be associated with a single error message:
- *
- * ```html
- *   <label>
- *     Email address
- *     <input type="email"
- *            ng-model="data.email"
- *            name="myEmail"
- *            ng-minlength="5"
- *            ng-maxlength="100"
- *            required />
- *   </label>
- *   <div ng-messages="myForm.myEmail.$error" role="alert">
- *     <div ng-message-exp="'required'">You did not enter your email address</div>
- *     <div ng-message-exp="['minlength', 'maxlength']">
- *       Your email must be between 5 and 100 characters long
- *     </div>
- *   </div>
- * ```
- *
- * Feel free to use other structural directives such as ng-if and ng-switch to further control
- * what messages are active and when. Be careful, if you place ng-message on the same element
- * as these structural directives, Angular may not be able to determine if a message is active
- * or not. Therefore it is best to place the ng-message on a child element of the structural
- * directive.
- *
- * ```html
- * <div ng-messages="myForm.myEmail.$error" role="alert">
- *   <div ng-if="showRequiredError">
- *     <div ng-message="required">Please enter something</div>
- *   </div>
- * </div>
- * ```
- *
- * ## Animations
- * If the `ngAnimate` module is active within the application then the `ngMessages`, `ngMessage` and
- * `ngMessageExp` directives will trigger animations whenever any messages are added and removed from
- * the DOM by the `ngMessages` directive.
- *
- * Whenever the `ngMessages` directive contains one or more visible messages then the `.ng-active` CSS
- * class will be added to the element. The `.ng-inactive` CSS class will be applied when there are no
- * messages present. Therefore, CSS transitions and keyframes as well as JavaScript animations can
- * hook into the animations whenever these classes are added/removed.
- *
- * Let's say that our HTML code for our messages container looks like so:
- *
- * ```html
- * <div ng-messages="myMessages" class="my-messages" role="alert">
- *   <div ng-message="alert" class="some-message">...</div>
- *   <div ng-message="fail" class="some-message">...</div>
- * </div>
- * ```
- *
- * Then the CSS animation code for the message container looks like so:
- *
- * ```css
- * .my-messages {
- *   transition:1s linear all;
- * }
- * .my-messages.ng-active {
- *   // messages are visible
- * }
- * .my-messages.ng-inactive {
- *   // messages are hidden
- * }
- * ```
- *
- * Whenever an inner message is attached (becomes visible) or removed (becomes hidden) then the enter
- * and leave animation is triggered for each particular element bound to the `ngMessage` directive.
- *
- * Therefore, the CSS code for the inner messages looks like so:
- *
- * ```css
- * .some-message {
- *   transition:1s linear all;
- * }
- *
- * .some-message.ng-enter {}
- * .some-message.ng-enter.ng-enter-active {}
- *
- * .some-message.ng-leave {}
- * .some-message.ng-leave.ng-leave-active {}
- * ```
- *
- * {@link ngAnimate Click here} to learn how to use JavaScript animations or to learn more about ngAnimate.
- */
-angular.module('ngMessages', [], function initAngularHelpers() {
-  // Access helpers from angular core.
-  // Do it inside a `config` block to ensure `window.angular` is available.
-  forEach = angular.forEach;
-  isArray = angular.isArray;
-  isString = angular.isString;
-  jqLite = angular.element;
-})
-
-  /**
-   * @ngdoc directive
-   * @module ngMessages
-   * @name ngMessages
-   * @restrict AE
-   *
-   * @description
-   * `ngMessages` is a directive that is designed to show and hide messages based on the state
-   * of a key/value object that it listens on. The directive itself complements error message
-   * reporting with the `ngModel` $error object (which stores a key/value state of validation errors).
-   *
-   * `ngMessages` manages the state of internal messages within its container element. The internal
-   * messages use the `ngMessage` directive and will be inserted/removed from the page depending
-   * on if they're present within the key/value object. By default, only one message will be displayed
-   * at a time and this depends on the prioritization of the messages within the template. (This can
-   * be changed by using the `ng-messages-multiple` or `multiple` attribute on the directive container.)
-   *
-   * A remote template can also be used to promote message reusability and messages can also be
-   * overridden.
-   *
-   * {@link module:ngMessages Click here} to learn more about `ngMessages` and `ngMessage`.
-   *
-   * @usage
-   * ```html
-   * <!-- using attribute directives -->
-   * <ANY ng-messages="expression" role="alert">
-   *   <ANY ng-message="stringValue">...</ANY>
-   *   <ANY ng-message="stringValue1, stringValue2, ...">...</ANY>
-   *   <ANY ng-message-exp="expressionValue">...</ANY>
-   * </ANY>
-   *
-   * <!-- or by using element directives -->
-   * <ng-messages for="expression" role="alert">
-   *   <ng-message when="stringValue">...</ng-message>
-   *   <ng-message when="stringValue1, stringValue2, ...">...</ng-message>
-   *   <ng-message when-exp="expressionValue">...</ng-message>
-   * </ng-messages>
-   * ```
-   *
-   * @param {string} ngMessages an angular expression evaluating to a key/value object
-   *                 (this is typically the $error object on an ngModel instance).
-   * @param {string=} ngMessagesMultiple|multiple when set, all messages will be displayed with true
-   *
-   * @example
-   * <example name="ngMessages-directive" module="ngMessagesExample"
-   *          deps="angular-messages.js"
-   *          animations="true" fixBase="true">
-   *   <file name="index.html">
-   *     <form name="myForm">
-   *       <label>
-   *         Enter your name:
-   *         <input type="text"
-   *                name="myName"
-   *                ng-model="name"
-   *                ng-minlength="5"
-   *                ng-maxlength="20"
-   *                required />
-   *       </label>
-   *       <pre>myForm.myName.$error = {{ myForm.myName.$error | json }}</pre>
-   *
-   *       <div ng-messages="myForm.myName.$error" style="color:maroon" role="alert">
-   *         <div ng-message="required">You did not enter a field</div>
-   *         <div ng-message="minlength">Your field is too short</div>
-   *         <div ng-message="maxlength">Your field is too long</div>
-   *       </div>
-   *     </form>
-   *   </file>
-   *   <file name="script.js">
-   *     angular.module('ngMessagesExample', ['ngMessages']);
-   *   </file>
-   * </example>
-   */
-  .directive('ngMessages', ['$animate', function($animate) {
-    var ACTIVE_CLASS = 'ng-active';
-    var INACTIVE_CLASS = 'ng-inactive';
-
-    return {
-      require: 'ngMessages',
-      restrict: 'AE',
-      controller: ['$element', '$scope', '$attrs', function NgMessagesCtrl($element, $scope, $attrs) {
-        var ctrl = this;
-        var latestKey = 0;
-        var nextAttachId = 0;
-
-        this.getAttachId = function getAttachId() { return nextAttachId++; };
-
-        var messages = this.messages = {};
-        var renderLater, cachedCollection;
-
-        this.render = function(collection) {
-          collection = collection || {};
-
-          renderLater = false;
-          cachedCollection = collection;
-
-          // this is true if the attribute is empty or if the attribute value is truthy
-          var multiple = isAttrTruthy($scope, $attrs.ngMessagesMultiple) ||
-                         isAttrTruthy($scope, $attrs.multiple);
-
-          var unmatchedMessages = [];
-          var matchedKeys = {};
-          var messageItem = ctrl.head;
-          var messageFound = false;
-          var totalMessages = 0;
-
-          // we use != instead of !== to allow for both undefined and null values
-          while (messageItem != null) {
-            totalMessages++;
-            var messageCtrl = messageItem.message;
-
-            var messageUsed = false;
-            if (!messageFound) {
-              forEach(collection, function(value, key) {
-                if (!messageUsed && truthy(value) && messageCtrl.test(key)) {
-                  // this is to prevent the same error name from showing up twice
-                  if (matchedKeys[key]) return;
-                  matchedKeys[key] = true;
-
-                  messageUsed = true;
-                  messageCtrl.attach();
-                }
-              });
-            }
-
-            if (messageUsed) {
-              // unless we want to display multiple messages then we should
-              // set a flag here to avoid displaying the next message in the list
-              messageFound = !multiple;
-            } else {
-              unmatchedMessages.push(messageCtrl);
-            }
-
-            messageItem = messageItem.next;
-          }
-
-          forEach(unmatchedMessages, function(messageCtrl) {
-            messageCtrl.detach();
-          });
-
-          if (unmatchedMessages.length !== totalMessages) {
-            $animate.setClass($element, ACTIVE_CLASS, INACTIVE_CLASS);
-          } else {
-            $animate.setClass($element, INACTIVE_CLASS, ACTIVE_CLASS);
-          }
-        };
-
-        $scope.$watchCollection($attrs.ngMessages || $attrs['for'], ctrl.render);
-
-        // If the element is destroyed, proactively destroy all the currently visible messages
-        $element.on('$destroy', function() {
-          forEach(messages, function(item) {
-            item.message.detach();
-          });
-        });
-
-        this.reRender = function() {
-          if (!renderLater) {
-            renderLater = true;
-            $scope.$evalAsync(function() {
-              if (renderLater && cachedCollection) {
-                ctrl.render(cachedCollection);
-              }
-            });
-          }
-        };
-
-        this.register = function(comment, messageCtrl) {
-          var nextKey = latestKey.toString();
-          messages[nextKey] = {
-            message: messageCtrl
-          };
-          insertMessageNode($element[0], comment, nextKey);
-          comment.$$ngMessageNode = nextKey;
-          latestKey++;
-
-          ctrl.reRender();
-        };
-
-        this.deregister = function(comment) {
-          var key = comment.$$ngMessageNode;
-          delete comment.$$ngMessageNode;
-          removeMessageNode($element[0], comment, key);
-          delete messages[key];
-          ctrl.reRender();
-        };
-
-        function findPreviousMessage(parent, comment) {
-          var prevNode = comment;
-          var parentLookup = [];
-
-          while (prevNode && prevNode !== parent) {
-            var prevKey = prevNode.$$ngMessageNode;
-            if (prevKey && prevKey.length) {
-              return messages[prevKey];
-            }
-
-            // dive deeper into the DOM and examine its children for any ngMessage
-            // comments that may be in an element that appears deeper in the list
-            if (prevNode.childNodes.length && parentLookup.indexOf(prevNode) === -1) {
-              parentLookup.push(prevNode);
-              prevNode = prevNode.childNodes[prevNode.childNodes.length - 1];
-            } else if (prevNode.previousSibling) {
-              prevNode = prevNode.previousSibling;
-            } else {
-              prevNode = prevNode.parentNode;
-              parentLookup.push(prevNode);
-            }
-          }
-        }
-
-        function insertMessageNode(parent, comment, key) {
-          var messageNode = messages[key];
-          if (!ctrl.head) {
-            ctrl.head = messageNode;
-          } else {
-            var match = findPreviousMessage(parent, comment);
-            if (match) {
-              messageNode.next = match.next;
-              match.next = messageNode;
-            } else {
-              messageNode.next = ctrl.head;
-              ctrl.head = messageNode;
-            }
-          }
-        }
-
-        function removeMessageNode(parent, comment, key) {
-          var messageNode = messages[key];
-
-          var match = findPreviousMessage(parent, comment);
-          if (match) {
-            match.next = messageNode.next;
-          } else {
-            ctrl.head = messageNode.next;
-          }
-        }
-      }]
-    };
-
-    function isAttrTruthy(scope, attr) {
-     return (isString(attr) && attr.length === 0) || //empty attribute
-            truthy(scope.$eval(attr));
-    }
-
-    function truthy(val) {
-      return isString(val) ? val.length : !!val;
-    }
-  }])
-
-  /**
-   * @ngdoc directive
-   * @name ngMessagesInclude
-   * @restrict AE
-   * @scope
-   *
-   * @description
-   * `ngMessagesInclude` is a directive with the purpose to import existing ngMessage template
-   * code from a remote template and place the downloaded template code into the exact spot
-   * that the ngMessagesInclude directive is placed within the ngMessages container. This allows
-   * for a series of pre-defined messages to be reused and also allows for the developer to
-   * determine what messages are overridden due to the placement of the ngMessagesInclude directive.
-   *
-   * @usage
-   * ```html
-   * <!-- using attribute directives -->
-   * <ANY ng-messages="expression" role="alert">
-   *   <ANY ng-messages-include="remoteTplString">...</ANY>
-   * </ANY>
-   *
-   * <!-- or by using element directives -->
-   * <ng-messages for="expression" role="alert">
-   *   <ng-messages-include src="expressionValue1">...</ng-messages-include>
-   * </ng-messages>
-   * ```
-   *
-   * {@link module:ngMessages Click here} to learn more about `ngMessages` and `ngMessage`.
-   *
-   * @param {string} ngMessagesInclude|src a string value corresponding to the remote template.
-   */
-  .directive('ngMessagesInclude',
-    ['$templateRequest', '$document', '$compile', function($templateRequest, $document, $compile) {
-
-    return {
-      restrict: 'AE',
-      require: '^^ngMessages', // we only require this for validation sake
-      link: function($scope, element, attrs) {
-        var src = attrs.ngMessagesInclude || attrs.src;
-        $templateRequest(src).then(function(html) {
-          if ($scope.$$destroyed) return;
-
-          if (isString(html) && !html.trim()) {
-            // Empty template - nothing to compile
-            replaceElementWithMarker(element, src);
-          } else {
-            // Non-empty template - compile and link
-            $compile(html)($scope, function(contents) {
-              element.after(contents);
-              replaceElementWithMarker(element, src);
-            });
-          }
-        });
-      }
-    };
-
-    // Helpers
-    function replaceElementWithMarker(element, src) {
-      // A comment marker is placed for debugging purposes
-      var comment = $compile.$$createComment ?
-          $compile.$$createComment('ngMessagesInclude', src) :
-          $document[0].createComment(' ngMessagesInclude: ' + src + ' ');
-      var marker = jqLite(comment);
-      element.after(marker);
-
-      // Don't pollute the DOM anymore by keeping an empty directive element
-      element.remove();
-    }
-  }])
-
-  /**
-   * @ngdoc directive
-   * @name ngMessage
-   * @restrict AE
-   * @scope
-   *
-   * @description
-   * `ngMessage` is a directive with the purpose to show and hide a particular message.
-   * For `ngMessage` to operate, a parent `ngMessages` directive on a parent DOM element
-   * must be situated since it determines which messages are visible based on the state
-   * of the provided key/value map that `ngMessages` listens on.
-   *
-   * More information about using `ngMessage` can be found in the
-   * {@link module:ngMessages `ngMessages` module documentation}.
-   *
-   * @usage
-   * ```html
-   * <!-- using attribute directives -->
-   * <ANY ng-messages="expression" role="alert">
-   *   <ANY ng-message="stringValue">...</ANY>
-   *   <ANY ng-message="stringValue1, stringValue2, ...">...</ANY>
-   * </ANY>
-   *
-   * <!-- or by using element directives -->
-   * <ng-messages for="expression" role="alert">
-   *   <ng-message when="stringValue">...</ng-message>
-   *   <ng-message when="stringValue1, stringValue2, ...">...</ng-message>
-   * </ng-messages>
-   * ```
-   *
-   * @param {expression} ngMessage|when a string value corresponding to the message key.
-   */
-  .directive('ngMessage', ngMessageDirectiveFactory())
-
-
-  /**
-   * @ngdoc directive
-   * @name ngMessageExp
-   * @restrict AE
-   * @priority 1
-   * @scope
-   *
-   * @description
-   * `ngMessageExp` is the same as {@link directive:ngMessage `ngMessage`}, but instead of a static
-   * value, it accepts an expression to be evaluated for the message key.
-   *
-   * @usage
-   * ```html
-   * <!-- using attribute directives -->
-   * <ANY ng-messages="expression">
-   *   <ANY ng-message-exp="expressionValue">...</ANY>
-   * </ANY>
-   *
-   * <!-- or by using element directives -->
-   * <ng-messages for="expression">
-   *   <ng-message when-exp="expressionValue">...</ng-message>
-   * </ng-messages>
-   * ```
-   *
-   * {@link module:ngMessages Click here} to learn more about `ngMessages` and `ngMessage`.
-   *
-   * @param {expression} ngMessageExp|whenExp an expression value corresponding to the message key.
-   */
-  .directive('ngMessageExp', ngMessageDirectiveFactory());
-
-function ngMessageDirectiveFactory() {
-  return ['$animate', function($animate) {
-    return {
-      restrict: 'AE',
-      transclude: 'element',
-      priority: 1, // must run before ngBind, otherwise the text is set on the comment
-      terminal: true,
-      require: '^^ngMessages',
-      link: function(scope, element, attrs, ngMessagesCtrl, $transclude) {
-        var commentNode = element[0];
-
-        var records;
-        var staticExp = attrs.ngMessage || attrs.when;
-        var dynamicExp = attrs.ngMessageExp || attrs.whenExp;
-        var assignRecords = function(items) {
-          records = items
-              ? (isArray(items)
-                  ? items
-                  : items.split(/[\s,]+/))
-              : null;
-          ngMessagesCtrl.reRender();
-        };
-
-        if (dynamicExp) {
-          assignRecords(scope.$eval(dynamicExp));
-          scope.$watchCollection(dynamicExp, assignRecords);
-        } else {
-          assignRecords(staticExp);
-        }
-
-        var currentElement, messageCtrl;
-        ngMessagesCtrl.register(commentNode, messageCtrl = {
-          test: function(name) {
-            return contains(records, name);
-          },
-          attach: function() {
-            if (!currentElement) {
-              $transclude(function(elm, newScope) {
-                $animate.enter(elm, null, element);
-                currentElement = elm;
-
-                // Each time we attach this node to a message we get a new id that we can match
-                // when we are destroying the node later.
-                var $$attachId = currentElement.$$attachId = ngMessagesCtrl.getAttachId();
-
-                // in the event that the element or a parent element is destroyed
-                // by another structural directive then it's time
-                // to deregister the message from the controller
-                currentElement.on('$destroy', function() {
-                  if (currentElement && currentElement.$$attachId === $$attachId) {
-                    ngMessagesCtrl.deregister(commentNode);
-                    messageCtrl.detach();
-                  }
-                  newScope.$destroy();
-                });
-              });
-            }
-          },
-          detach: function() {
-            if (currentElement) {
-              var elm = currentElement;
-              currentElement = null;
-              $animate.leave(elm);
-            }
-          }
-        });
-      }
-    };
-  }];
-
-  function contains(collection, key) {
-    if (collection) {
-      return isArray(collection)
-          ? collection.indexOf(key) >= 0
-          : collection.hasOwnProperty(key);
-    }
-  }
-}
-
-
-})(window, window.angular);
-
 /*!
- * Angular Material Design
+ * AngularJS Material Design
  * https://github.com/angular/material
  * @license MIT
- * v1.1.3
+ * v1.1.4
  */
 (function( window, angular, undefined ){
 "use strict";
@@ -38438,7 +38400,7 @@ function ngMessageDirectiveFactory() {
 (function(){
 "use strict";
 
-angular.module('ngMaterial', ["ng","ngAnimate","ngAria","material.core","material.core.gestures","material.core.interaction","material.core.layout","material.core.meta","material.core.theming.palette","material.core.theming","material.core.animate","material.components.autocomplete","material.components.backdrop","material.components.bottomSheet","material.components.button","material.components.card","material.components.checkbox","material.components.chips","material.components.colors","material.components.content","material.components.datepicker","material.components.dialog","material.components.divider","material.components.fabActions","material.components.fabShared","material.components.fabSpeedDial","material.components.fabToolbar","material.components.gridList","material.components.icon","material.components.input","material.components.list","material.components.menu","material.components.menuBar","material.components.panel","material.components.navBar","material.components.progressCircular","material.components.progressLinear","material.components.radioButton","material.components.select","material.components.showHide","material.components.sidenav","material.components.slider","material.components.sticky","material.components.subheader","material.components.swipe","material.components.switch","material.components.toast","material.components.tabs","material.components.toolbar","material.components.tooltip","material.components.truncate","material.components.virtualRepeat","material.components.whiteframe"]);
+angular.module('ngMaterial', ["ng","ngAnimate","ngAria","material.core","material.core.interaction","material.core.gestures","material.core.layout","material.core.meta","material.core.theming.palette","material.core.theming","material.core.animate","material.components.autocomplete","material.components.backdrop","material.components.bottomSheet","material.components.button","material.components.card","material.components.checkbox","material.components.chips","material.components.colors","material.components.content","material.components.datepicker","material.components.dialog","material.components.divider","material.components.fabActions","material.components.fabShared","material.components.fabSpeedDial","material.components.fabToolbar","material.components.gridList","material.components.icon","material.components.input","material.components.list","material.components.menu","material.components.menuBar","material.components.navBar","material.components.progressCircular","material.components.panel","material.components.progressLinear","material.components.radioButton","material.components.showHide","material.components.sidenav","material.components.select","material.components.slider","material.components.sticky","material.components.subheader","material.components.switch","material.components.swipe","material.components.tabs","material.components.toast","material.components.toolbar","material.components.tooltip","material.components.truncate","material.components.virtualRepeat","material.components.whiteframe"]);
 })();
 (function(){
 "use strict";
@@ -38473,8 +38435,8 @@ function DetectNgTouch($log, $injector) {
   if ( $injector.has('$swipe') ) {
     var msg = "" +
       "You are using the ngTouch module. \n" +
-      "Angular Material already has mobile click, tap, and swipe support... \n" +
-      "ngTouch is not supported with Angular Material!";
+      "AngularJS Material already has mobile click, tap, and swipe support... \n" +
+      "ngTouch is not supported with AngularJS Material!";
     $log.warn(msg);
   }
 }
@@ -38533,13 +38495,13 @@ function rAFDecorator($delegate) {
  */
 function qDecorator($delegate) {
   /**
-   * Adds a shim for $q.resolve for Angular version that don't have it,
+   * Adds a shim for $q.resolve for AngularJS version that don't have it,
    * so we don't have to think about it.
    *
    * via https://github.com/angular/angular.js/pull/11987
    */
 
-  // TODO(crisbeto): this won't be necessary once we drop Angular 1.3
+  // TODO(crisbeto): this won't be necessary once we drop AngularJS 1.3
   if (!$delegate.resolve) {
     $delegate.resolve = $delegate.when;
   }
@@ -38811,10 +38773,15 @@ function MdConstantFactory() {
 
   var self = {
     isInputKey : function(e) { return (e.keyCode >= 31 && e.keyCode <= 90); },
-    isNumPadKey : function (e){ return (3 === e.location && e.keyCode >= 97 && e.keyCode <= 105); },
+    isNumPadKey : function(e) { return (3 === e.location && e.keyCode >= 97 && e.keyCode <= 105); },
+    isMetaKey: function(e) { return (e.keyCode >= 91 && e.keyCode <= 93); },
+    isFnLockKey: function(e) { return (e.keyCode >= 112 && e.keyCode <= 145); },
     isNavigationKey : function(e) {
       var kc = self.KEY_CODE, NAVIGATION_KEYS =  [kc.SPACE, kc.ENTER, kc.UP_ARROW, kc.DOWN_ARROW];
       return (NAVIGATION_KEYS.indexOf(e.keyCode) != -1);
+    },
+    hasModifierKey: function(e) {
+      return e.ctrlKey || e.metaKey || e.altKey;
     },
 
     /**
@@ -39533,7 +39500,7 @@ function UtilFactory($document, $timeout, $compile, $rootScope, $$mdAnimate, $in
 
       var $options = ngModelCtrl.$options;
 
-      // The newer versions of Angular introduced a `getOption function and made the option values no longer
+      // The newer versions of AngularJS introduced a `getOption function and made the option values no longer
       // visible on the $options object.
       return $options.getOption ? $options.getOption(optionName) : $options[optionName]
     },
@@ -40238,7 +40205,7 @@ function UtilFactory($document, $timeout, $compile, $rootScope, $$mdAnimate, $in
     /**
      * Returns true if the parent form of the element has been submitted.
      *
-     * @param element An Angular or HTML5 element.
+     * @param element An AngularJS or HTML5 element.
      *
      * @returns {boolean}
      */
@@ -40354,7 +40321,7 @@ angular.element.prototype.blur = angular.element.prototype.blur || function() {
  * @ngdoc module
  * @name material.core.compiler
  * @description
- * Angular Material template and element compiler.
+ * AngularJS Material template and element compiler.
  */
 MdCompilerService.$inject = ["$q", "$templateRequest", "$injector", "$compile", "$controller"];
 angular
@@ -40366,10 +40333,10 @@ angular
  * @name $mdCompiler
  * @module material.core.compiler
  * @description
- * The $mdCompiler service is an abstraction of Angular's compiler, that allows developers
+ * The $mdCompiler service is an abstraction of AngularJS's compiler, that allows developers
  * to easily compile an element with options like in a Directive Definition Object.
  *
- * > The compiler powers a lot of components inside of Angular Material.
+ * > The compiler powers a lot of components inside of AngularJS Material.
  * > Like the `$mdPanel` or `$mdDialog`.
  *
  * @usage
@@ -40456,8 +40423,8 @@ function MdCompilerService($q, $templateRequest, $injector, $compile, $controlle
  * @name $mdCompiler#compile
  * @description
  *
- * A method to compile a HTML template with the Angular compiler.
- * The `$mdCompiler` is wrapper around the Angular compiler and provides extra functionality
+ * A method to compile a HTML template with the AngularJS compiler.
+ * The `$mdCompiler` is wrapper around the AngularJS compiler and provides extra functionality
  * like controller instantiation or async resolves.
  *
  * @param {!Object} options An options object, with the following properties:
@@ -40609,7 +40576,7 @@ MdCompilerService.prototype._compileElement = function(locals, element, options)
 
       var ctrl = invokeCtrl();
 
-      // Unique identifier for Angular Route ngView controllers.
+      // Unique identifier for AngularJS Route ngView controllers.
       element.data('$ngControllerController', ctrl);
       element.children().data('$ngControllerController', ctrl);
 
@@ -40617,7 +40584,7 @@ MdCompilerService.prototype._compileElement = function(locals, element, options)
       compileData.controller = ctrl;
     }
 
-    // Invoke the Angular $compile link function.
+    // Invoke the AngularJS $compile link function.
     return ngLinkFn(scope);
   }
 
@@ -40689,7 +40656,7 @@ MdCompilerService.prototype._fetchContentElement = function(options) {
  * @ngdoc module
  * @name material.core.aria
  * @description
- * Aria Expectations for ngMaterial components.
+ * Aria Expectations for AngularJS Material components.
  */
 MdAriaService.$inject = ["$$rAF", "$log", "$window", "$interpolate"];
 angular
@@ -40703,7 +40670,7 @@ angular
  *
  * @description
  *
- * Modify options of the `$mdAria` service, which will be used by most of the Angular Material
+ * Modify options of the `$mdAria` service, which will be used by most of the AngularJS Material
  * components.
  *
  * You are able to disable `$mdAria` warnings, by using the following markup.
@@ -40733,7 +40700,7 @@ function MdAriaProvider() {
   /**
    * @ngdoc method
    * @name $mdAriaProvider#disableWarnings
-   * @description Disables all ARIA warnings generated by Angular Material.
+   * @description Disables all ARIA warnings generated by AngularJS Material.
    */
   function disableWarnings() {
     config.showWarnings = false;
@@ -40754,7 +40721,9 @@ function MdAriaService($$rAF, $log, $window, $interpolate) {
     expectAsync: expectAsync,
     expectWithText: expectWithText,
     expectWithoutText: expectWithoutText,
-    getText: getText
+    getText: getText,
+    hasAriaLabel: hasAriaLabel,
+    parentHasAriaLabel: parentHasAriaLabel
   };
 
   /**
@@ -40857,10 +40826,310 @@ function MdAriaService($$rAF, $log, $window, $interpolate) {
         }
       }
     }
-
     return hasAttr;
   }
+
+  /**
+   * Check if expected element has aria label attribute
+   * @param element
+   */
+  function hasAriaLabel(element) {
+    var node = angular.element(element)[0] || element;
+
+    /* Check if compatible node type (ie: not HTML Document node) */
+    if (!node.hasAttribute) {
+      return false;
+    }
+
+    /* Check label or description attributes */
+    return node.hasAttribute('aria-label') || node.hasAttribute('aria-labelledby') || node.hasAttribute('aria-describedby');
+  }
+
+  /**
+   * Check if expected element's parent has aria label attribute and has valid role and tagName
+   * @param element
+   * @param {optional} level Number of levels deep search should be performed
+   */
+  function parentHasAriaLabel(element, level) {
+    level = level || 1;
+    var node = angular.element(element)[0] || element;
+    if (!node.parentNode) {
+      return false;
+    }
+    if (performCheck(node.parentNode)) {
+      return true;
+    }
+    level--;
+    if (level) {
+      return parentHasAriaLabel(node.parentNode, level);
+    }
+    return false;
+
+    function performCheck(parentNode) {
+      if (!hasAriaLabel(parentNode)) {
+        return false;
+      }
+      /* Perform role blacklist check */
+      if (parentNode.hasAttribute('role')) {
+        switch(parentNode.getAttribute('role').toLowerCase()) {
+          case 'command':
+          case 'definition':
+          case 'directory':
+          case 'grid':
+          case 'list':
+          case 'listitem':
+          case 'log':
+          case 'marquee':
+          case 'menu':
+          case 'menubar':
+          case 'note':
+          case 'presentation':
+          case 'separator':
+          case 'scrollbar':
+          case 'status':
+          case 'tablist':
+            return false;
+        }
+      }
+      /* Perform tagName blacklist check */
+      switch(parentNode.tagName.toLowerCase()) {
+        case 'abbr':
+        case 'acronym':
+        case 'address':
+        case 'applet':
+        case 'audio':
+        case 'b':
+        case 'bdi':
+        case 'bdo':
+        case 'big':
+        case 'blockquote':
+        case 'br':
+        case 'canvas':
+        case 'caption':
+        case 'center':
+        case 'cite':
+        case 'code':
+        case 'col':
+        case 'data':
+        case 'dd':
+        case 'del':
+        case 'dfn':
+        case 'dir':
+        case 'div':
+        case 'dl':
+        case 'em':
+        case 'embed':
+        case 'fieldset':
+        case 'figcaption':
+        case 'font':
+        case 'h1':
+        case 'h2':
+        case 'h3':
+        case 'h4':
+        case 'h5':
+        case 'h6':
+        case 'hgroup':
+        case 'html':
+        case 'i':
+        case 'ins':
+        case 'isindex':
+        case 'kbd':
+        case 'keygen':
+        case 'label':
+        case 'legend':
+        case 'li':
+        case 'map':
+        case 'mark':
+        case 'menu':
+        case 'object':
+        case 'ol':
+        case 'output':
+        case 'pre':
+        case 'presentation':
+        case 'q':
+        case 'rt':
+        case 'ruby':
+        case 'samp':
+        case 'small':
+        case 'source':
+        case 'span':
+        case 'status':
+        case 'strike':
+        case 'strong':
+        case 'sub':
+        case 'sup':
+        case 'svg':
+        case 'tbody':
+        case 'td':
+        case 'th':
+        case 'thead':
+        case 'time':
+        case 'tr':
+        case 'track':
+        case 'tt':
+        case 'ul':
+        case 'var':
+          return false;
+      }
+      return true;
+    }
+  }
 }
+
+})();
+(function(){
+"use strict";
+
+/**
+ * @ngdoc module
+ * @name material.core.interaction
+ * @description
+ * User interaction detection to provide proper accessibility.
+ */
+MdInteractionService.$inject = ["$timeout", "$mdUtil"];
+angular
+  .module('material.core.interaction', [])
+  .service('$mdInteraction', MdInteractionService);
+
+
+/**
+ * @ngdoc service
+ * @name $mdInteraction
+ * @module material.core.interaction
+ *
+ * @description
+ *
+ * Service which keeps track of the last interaction type and validates them for several browsers.
+ * The service hooks into the document's body and listens for touch, mouse and keyboard events.
+ *
+ * The most recent interaction type can be retrieved by calling the `getLastInteractionType` method.
+ *
+ * Here is an example markup for using the interaction service.
+ *
+ * <hljs lang="js">
+ *   var lastType = $mdInteraction.getLastInteractionType();
+ *
+ *   if (lastType === 'keyboard') {
+ *     // We only restore the focus for keyboard users.
+ *     restoreFocus();
+ *   }
+ * </hljs>
+ *
+ */
+function MdInteractionService($timeout, $mdUtil) {
+  this.$timeout = $timeout;
+  this.$mdUtil = $mdUtil;
+
+  this.bodyElement = angular.element(document.body);
+  this.isBuffering = false;
+  this.bufferTimeout = null;
+  this.lastInteractionType = null;
+  this.lastInteractionTime = null;
+
+  // Type Mappings for the different events
+  // There will be three three interaction types
+  // `keyboard`, `mouse` and `touch`
+  // type `pointer` will be evaluated in `pointerMap` for IE Browser events
+  this.inputEventMap = {
+    'keydown': 'keyboard',
+    'mousedown': 'mouse',
+    'mouseenter': 'mouse',
+    'touchstart': 'touch',
+    'pointerdown': 'pointer',
+    'MSPointerDown': 'pointer'
+  };
+
+  // IE PointerDown events will be validated in `touch` or `mouse`
+  // Index numbers referenced here: https://msdn.microsoft.com/library/windows/apps/hh466130.aspx
+  this.iePointerMap = {
+    2: 'touch',
+    3: 'touch',
+    4: 'mouse'
+  };
+
+  this.initializeEvents();
+}
+
+/**
+ * Initializes the interaction service, by registering all interaction events to the
+ * body element.
+ */
+MdInteractionService.prototype.initializeEvents = function() {
+  // IE browsers can also trigger pointer events, which also leads to an interaction.
+  var pointerEvent = 'MSPointerEvent' in window ? 'MSPointerDown' : 'PointerEvent' in window ? 'pointerdown' : null;
+
+  this.bodyElement.on('keydown mousedown', this.onInputEvent.bind(this));
+
+  if ('ontouchstart' in document.documentElement) {
+    this.bodyElement.on('touchstart', this.onBufferInputEvent.bind(this));
+  }
+
+  if (pointerEvent) {
+    this.bodyElement.on(pointerEvent, this.onInputEvent.bind(this));
+  }
+
+};
+
+/**
+ * Event listener for normal interaction events, which should be tracked.
+ * @param event {MouseEvent|KeyboardEvent|PointerEvent|TouchEvent}
+ */
+MdInteractionService.prototype.onInputEvent = function(event) {
+  if (this.isBuffering) {
+    return;
+  }
+
+  var type = this.inputEventMap[event.type];
+
+  if (type === 'pointer') {
+    type = this.iePointerMap[event.pointerType] || event.pointerType;
+  }
+
+  this.lastInteractionType = type;
+  this.lastInteractionTime = this.$mdUtil.now();
+};
+
+/**
+ * Event listener for interaction events which should be buffered (touch events).
+ * @param event {TouchEvent}
+ */
+MdInteractionService.prototype.onBufferInputEvent = function(event) {
+  this.$timeout.cancel(this.bufferTimeout);
+
+  this.onInputEvent(event);
+  this.isBuffering = true;
+
+  // The timeout of 650ms is needed to delay the touchstart, because otherwise the touch will call
+  // the `onInput` function multiple times.
+  this.bufferTimeout = this.$timeout(function() {
+    this.isBuffering = false;
+  }.bind(this), 650, false);
+
+};
+
+/**
+ * @ngdoc method
+ * @name $mdInteraction#getLastInteractionType
+ * @description Retrieves the last interaction type triggered in body.
+ * @returns {string|null} Last interaction type.
+ */
+MdInteractionService.prototype.getLastInteractionType = function() {
+  return this.lastInteractionType;
+};
+
+/**
+ * @ngdoc method
+ * @name $mdInteraction#isUserInvoked
+ * @description Method to detect whether any interaction happened recently or not.
+ * @param {number=} checkDelay Time to check for any interaction to have been triggered.
+ * @returns {boolean} Whether there was any interaction or not.
+ */
+MdInteractionService.prototype.isUserInvoked = function(checkDelay) {
+  var delay = angular.isNumber(checkDelay) ? checkDelay : 15;
+
+  // Check for any interaction to be within the specified check time.
+  return this.lastInteractionTime >= this.$mdUtil.now() - delay;
+};
 
 })();
 (function(){
@@ -41394,7 +41663,7 @@ function attachToDocument( $mdGesture, $$MdGestureHandler ) {
   if (!isInitialized && $mdGesture.isHijackingClicks ) {
     /*
      * If hijack clicks is true, we preventDefault any click that wasn't
-     * sent by ngMaterial. This is because on older Android & iOS, a false, or 'ghost',
+     * sent by AngularJS Material. This is because on older Android & iOS, a false, or 'ghost',
      * click event will be sent ~400ms after a touchend event happens.
      * The only way to know if this click is real is to prevent any normal
      * click events, and add a flag to events sent by material so we know not to prevent those.
@@ -41422,8 +41691,10 @@ function attachToDocument( $mdGesture, $$MdGestureHandler ) {
 
   function clickHijacker(ev) {
     var isKeyClick = ev.clientX === 0 && ev.clientY === 0;
+    var isSubmitEvent = ev.target && ev.target.type === 'submit';
     if (!isKeyClick && !ev.$material && !ev.isIonicTap
-      && !isInputEventFromLabelClick(ev)) {
+      && !isInputEventFromLabelClick(ev)
+      && !isSubmitEvent) {
       ev.preventDefault();
       ev.stopPropagation();
       lastLabelClickPos = null;
@@ -41933,7 +42204,7 @@ function InterimElementProvider() {
 
         showPromises.push(showAction);
 
-        // In Angular 1.6+, exceptions inside promises will cause a rejection. We need to handle
+        // In AngularJS 1.6+, exceptions inside promises will cause a rejection. We need to handle
         // the rejection and only log it if it's an error.
         interimElement.deferred.promise.catch(function(fault) {
           if (fault instanceof Error) {
@@ -42016,7 +42287,7 @@ function InterimElementProvider() {
 
         hidePromises.push(cancelAction);
 
-        // Since Angular 1.6.7, promises will be logged to $exceptionHandler when the promise
+        // Since AngularJS 1.6.7, promises will be logged to $exceptionHandler when the promise
         // is not handling the rejection. We create a pseudo catch handler, which will prevent the
         // promise from being logged to the $exceptionHandler.
         return interim.deferred.promise.catch(angular.noop);
@@ -42299,7 +42570,7 @@ function InterimElementProvider() {
           // Trigger onComplete callback when the `show()` finishes
           var notifyComplete = options.onComplete || angular.noop;
 
-          // Necessary for consistency between Angular 1.5 and 1.6.
+          // Necessary for consistency between AngularJS 1.5 and 1.6.
           try {
             notifyShowing(options.scope, element, options, controller);
           } catch (e) {
@@ -42369,161 +42640,6 @@ function InterimElementProvider() {
 (function(){
 "use strict";
 
-/**
- * @ngdoc module
- * @name material.core.interaction
- * @description
- * User interaction detection to provide proper accessibility.
- */
-MdInteractionService.$inject = ["$timeout", "$mdUtil"];
-angular
-  .module('material.core.interaction', [])
-  .service('$mdInteraction', MdInteractionService);
-
-
-/**
- * @ngdoc service
- * @name $mdInteraction
- * @module material.core.interaction
- *
- * @description
- *
- * Service which keeps track of the last interaction type and validates them for several browsers.
- * The service hooks into the document's body and listens for touch, mouse and keyboard events.
- *
- * The most recent interaction type can be retrieved by calling the `getLastInteractionType` method.
- *
- * Here is an example markup for using the interaction service.
- *
- * <hljs lang="js">
- *   var lastType = $mdInteraction.getLastInteractionType();
- *
- *   if (lastType === 'keyboard') {
- *     // We only restore the focus for keyboard users.
- *     restoreFocus();
- *   }
- * </hljs>
- *
- */
-function MdInteractionService($timeout, $mdUtil) {
-  this.$timeout = $timeout;
-  this.$mdUtil = $mdUtil;
-
-  this.bodyElement = angular.element(document.body);
-  this.isBuffering = false;
-  this.bufferTimeout = null;
-  this.lastInteractionType = null;
-  this.lastInteractionTime = null;
-
-  // Type Mappings for the different events
-  // There will be three three interaction types
-  // `keyboard`, `mouse` and `touch`
-  // type `pointer` will be evaluated in `pointerMap` for IE Browser events
-  this.inputEventMap = {
-    'keydown': 'keyboard',
-    'mousedown': 'mouse',
-    'mouseenter': 'mouse',
-    'touchstart': 'touch',
-    'pointerdown': 'pointer',
-    'MSPointerDown': 'pointer'
-  };
-
-  // IE PointerDown events will be validated in `touch` or `mouse`
-  // Index numbers referenced here: https://msdn.microsoft.com/library/windows/apps/hh466130.aspx
-  this.iePointerMap = {
-    2: 'touch',
-    3: 'touch',
-    4: 'mouse'
-  };
-
-  this.initializeEvents();
-}
-
-/**
- * Initializes the interaction service, by registering all interaction events to the
- * body element.
- */
-MdInteractionService.prototype.initializeEvents = function() {
-  // IE browsers can also trigger pointer events, which also leads to an interaction.
-  var pointerEvent = 'MSPointerEvent' in window ? 'MSPointerDown' : 'PointerEvent' in window ? 'pointerdown' : null;
-
-  this.bodyElement.on('keydown mousedown', this.onInputEvent.bind(this));
-
-  if ('ontouchstart' in document.documentElement) {
-    this.bodyElement.on('touchstart', this.onBufferInputEvent.bind(this));
-  }
-
-  if (pointerEvent) {
-    this.bodyElement.on(pointerEvent, this.onInputEvent.bind(this));
-  }
-
-};
-
-/**
- * Event listener for normal interaction events, which should be tracked.
- * @param event {MouseEvent|KeyboardEvent|PointerEvent|TouchEvent}
- */
-MdInteractionService.prototype.onInputEvent = function(event) {
-  if (this.isBuffering) {
-    return;
-  }
-
-  var type = this.inputEventMap[event.type];
-
-  if (type === 'pointer') {
-    type = this.iePointerMap[event.pointerType] || event.pointerType;
-  }
-
-  this.lastInteractionType = type;
-  this.lastInteractionTime = this.$mdUtil.now();
-};
-
-/**
- * Event listener for interaction events which should be buffered (touch events).
- * @param event {TouchEvent}
- */
-MdInteractionService.prototype.onBufferInputEvent = function(event) {
-  this.$timeout.cancel(this.bufferTimeout);
-
-  this.onInputEvent(event);
-  this.isBuffering = true;
-
-  // The timeout of 650ms is needed to delay the touchstart, because otherwise the touch will call
-  // the `onInput` function multiple times.
-  this.bufferTimeout = this.$timeout(function() {
-    this.isBuffering = false;
-  }.bind(this), 650, false);
-
-};
-
-/**
- * @ngdoc method
- * @name $mdInteraction#getLastInteractionType
- * @description Retrieves the last interaction type triggered in body.
- * @returns {string|null} Last interaction type.
- */
-MdInteractionService.prototype.getLastInteractionType = function() {
-  return this.lastInteractionType;
-};
-
-/**
- * @ngdoc method
- * @name $mdInteraction#isUserInvoked
- * @description Method to detect whether any interaction happened recently or not.
- * @param {number=} checkDelay Time to check for any interaction to have been triggered.
- * @returns {boolean} Whether there was any interaction or not.
- */
-MdInteractionService.prototype.isUserInvoked = function(checkDelay) {
-  var delay = angular.isNumber(checkDelay) ? checkDelay : 15;
-
-  // Check for any interaction to be within the specified check time.
-  return this.lastInteractionTime >= this.$mdUtil.now() - delay;
-};
-
-})();
-(function(){
-"use strict";
-
 (function() {
   'use strict';
 
@@ -42561,7 +42677,7 @@ MdInteractionService.prototype.isUserInvoked = function(checkDelay) {
   /**
    *   registerLayoutAPI()
    *
-   *   The original ngMaterial Layout solution used attribute selectors and CSS.
+   *   The original AngularJS Material Layout solution used attribute selectors and CSS.
    *
    *  ```html
    *  <div layout="column"> My Content </div>
@@ -42765,8 +42881,8 @@ MdInteractionService.prototype.isUserInvoked = function(checkDelay) {
 
   // *********************************************************************************
   //
-  // These functions create registration functions for ngMaterial Layout attribute directives
-  // This provides easy translation to switch ngMaterial attribute selectors to
+  // These functions create registration functions for AngularJS Material Layout attribute directives
+  // This provides easy translation to switch AngularJS Material attribute selectors to
   // CLASS selectors and directives; which has huge performance implications
   // for IE Browsers
   //
@@ -42821,7 +42937,7 @@ MdInteractionService.prototype.isUserInvoked = function(checkDelay) {
   }
 
   /**
-   * Creates a registration function for ngMaterial Layout attribute directive.
+   * Creates a registration function for AngularJS Material Layout attribute directive.
    * This is a `simple` transpose of attribute usage to class usage; where we ignore
    * any attribute value
    */
@@ -42886,7 +43002,7 @@ MdInteractionService.prototype.isUserInvoked = function(checkDelay) {
       var value = validateAttributeValue(className, newValue || "");
       if ( angular.isDefined(value) ) {
         if (lastClass) element.removeClass(lastClass);
-        lastClass = !value ? className : className + "-" + value.replace(WHITESPACE, "-");
+        lastClass = !value ? className : className + "-" + value.trim().replace(WHITESPACE, "-");
         element.addClass(lastClass);
       }
     };
@@ -42933,7 +43049,7 @@ MdInteractionService.prototype.isUserInvoked = function(checkDelay) {
    * fallback value
    */
   function validateAttributeValue(className, value, updateFn) {
-    var origValue = value;
+    var origValue;
 
     if (!needsInterpolation(value)) {
       switch (className.replace(SUFFIXES,"")) {
@@ -42978,7 +43094,7 @@ MdInteractionService.prototype.isUserInvoked = function(checkDelay) {
       }
     }
 
-    return value;
+    return value ? value.trim() : "";
   }
 
   /**
@@ -43005,7 +43121,7 @@ MdInteractionService.prototype.isUserInvoked = function(checkDelay) {
 
   function getNormalizedAttrValue(className, attrs, defaultVal) {
     var normalizedAttr = attrs.$normalize(className);
-    return attrs[normalizedAttr] ? attrs[normalizedAttr].replace(WHITESPACE, "-") : defaultVal || null;
+    return attrs[normalizedAttr] ? attrs[normalizedAttr].trim().replace(WHITESPACE, "-") : defaultVal || null;
   }
 
   function findIn(item, list, replaceWith) {
@@ -43060,7 +43176,7 @@ MdInteractionService.prototype.isUserInvoked = function(checkDelay) {
  * @ngdoc module
  * @name material.core.liveannouncer
  * @description
- * Angular Material Live Announcer to provide accessibility for Voice Readers.
+ * AngularJS Material Live Announcer to provide accessibility for Voice Readers.
  */
 MdLiveAnnouncer.$inject = ["$timeout"];
 angular
@@ -44533,7 +44649,7 @@ function detectDisabledThemes($mdThemingProvider) {
 /**
  * @ngdoc method
  * @name $mdThemingProvider#registerStyles
- * @param {string} styles The styles to be appended to Angular Material's built in theme css.
+ * @param {string} styles The styles to be appended to AngularJS Material's built in theme css.
  */
 /**
  * @ngdoc method
@@ -44945,6 +45061,12 @@ function ThemingProvider($mdColorPalette, $$mdMetaProvider) {
    *     restrict: 'e',
    *     link: function(scope, el, attrs) {
    *       $mdTheming(el);
+   *
+   *       $mdTheming.defineTheme('myTheme', {
+   *         primary: 'blue',
+   *         accent: 'pink',
+   *         dark: true
+   *       })
    *     }
    *   };
    * });
@@ -45016,6 +45138,24 @@ function ThemingProvider($mdColorPalette, $$mdMetaProvider) {
    *
    * @param {Object} options Options object for the browser color
    * @returns {Function} remove function of the browser color
+   */
+
+  /**
+   * @ngdoc method
+   * @name $mdTheming#defineTheme
+   * @description
+   * Dynamically define a theme by an options object
+   *
+   * options are:<br/>
+   * `primary`    - The primary palette of the theme.<br/>
+   * `accent`     - The accent palette of the theme.<br/>
+   * `warn`       - The warn palette of the theme.<br/>
+   * `background` - The background palette of the theme.<br/>
+   * `dark`       - Indicates if it's a dark theme.<br/>
+   *
+   * @param {String} name Theme name to define
+   * @param {Object} options Theme definition options
+   * @returns {Promise<string>} A resolved promise with the theme name
    */
 
   /* @ngInject */
@@ -46394,9 +46534,26 @@ function MdBottomSheetDirective($mdBottomSheet) {
  * app.controller('MyController', function($scope, $mdBottomSheet) {
  *   $scope.openBottomSheet = function() {
  *     $mdBottomSheet.show({
- *       template: '<md-bottom-sheet>Hello!</md-bottom-sheet>'
+ *       template: '<md-bottom-sheet>' +
+ *       'Hello! <md-button ng-click="closeBottomSheet()">Close</md-button>' +
+ *       '</md-bottom-sheet>'
+ *     })
+ *
+ *     // Fires when the hide() method is used
+ *     .then(function() {
+ *       console.log('You clicked the button to close the bottom sheet!');
+ *     })
+ *
+ *     // Fires when the cancel() method is used
+ *     .catch(function() {
+ *       console.log('You hit escape or clicked the backdrop to close.');
  *     });
  *   };
+ *
+ *   $scope.closeBottomSheet = function($scope, $mdBottomSheet) {
+ *     $mdBottomSheet.hide();
+ *   }
+ *
  * });
  * </hljs>
  */
@@ -46407,6 +46564,14 @@ function MdBottomSheetDirective($mdBottomSheet) {
  *
  * @description
  * Show a bottom sheet with the specified options.
+ *
+ * <em><b>Note:</b> You should <b>always</b> provide a `.catch()` method in case the user hits the
+ * `esc` key or clicks the background to close. In this case, the `cancel()` method will
+ * automatically be called on the bottom sheet which will `reject()` the promise. See the @usage
+ * section above for an example.
+ *
+ * Newer versions of Angular will throw a `Possibly unhandled rejection` exception if you forget
+ * this.</em>
  *
  * @param {object} options An options object, with the following properties:
  *
@@ -46448,7 +46613,10 @@ function MdBottomSheetDirective($mdBottomSheet) {
  *
  * @description
  * Hide the existing bottom sheet and resolve the promise returned from
- * `$mdBottomSheet.show()`. This call will close the most recently opened/current bottomsheet (if any).
+ * `$mdBottomSheet.show()`. This call will close the most recently opened/current bottomsheet (if
+ * any).
+ *
+ * <em><b>Note:</b> Use a `.then()` on your `.show()` to handle this callback.</em>
  *
  * @param {*=} response An argument for the resolved promise.
  *
@@ -46461,6 +46629,8 @@ function MdBottomSheetDirective($mdBottomSheet) {
  * @description
  * Hide the existing bottom sheet and reject the promise returned from
  * `$mdBottomSheet.show()`.
+ *
+ * <em><b>Note:</b> Use a `.catch()` on your `.show()` to handle this callback.</em>
  *
  * @param {*=} response An argument for the rejected promise.
  *
@@ -46983,7 +47153,7 @@ angular
  * @param {string=} name Property name of the form under which the control is published.
  * @param {expression=} ng-true-value The value to which the expression should be set when selected.
  * @param {expression=} ng-false-value The value to which the expression should be set when not selected.
- * @param {string=} ng-change Angular expression to be executed when input changes due to user interaction with the input element.
+ * @param {string=} ng-change AngularJS expression to be executed when input changes due to user interaction with the input element.
  * @param {boolean=} md-no-ink Use of attribute indicates use of ripple ink effects
  * @param {string=} aria-label Adds label to checkbox for accessibility.
  *     Defaults to checkbox's text. If no default text is found, a warning will be logged.
@@ -47094,7 +47264,7 @@ function MdCheckboxDirective(inputDirective, $mdAria, $mdConstant, $mdTheming, $
 
       $mdAria.expectWithText(element, 'aria-label');
 
-      // Reuse the original input[type=checkbox] directive from Angular core.
+      // Reuse the original input[type=checkbox] directive from AngularJS core.
       // This is a bit hacky as we need our own event listener and own render
       // function.
       inputDirective.link.pre(scope, {
@@ -47143,7 +47313,7 @@ function MdCheckboxDirective(inputDirective, $mdAria, $mdConstant, $mdTheming, $
 
         scope.$apply(function() {
           // Toggle the checkbox value...
-          var viewValue = attr.ngChecked ? attr.checked : !ngModelCtrl.$viewValue;
+          var viewValue = attr.ngChecked && attr.ngClick ? attr.checked : !ngModelCtrl.$viewValue;
 
           ngModelCtrl.$setViewValue(viewValue, ev && ev.type);
           ngModelCtrl.$render();
@@ -47216,7 +47386,7 @@ angular.module('material.components.chips', [
    * @module material.components.colors
    *
    * @description
-   * With only defining themes, one couldn't get non ngMaterial elements colored with Material colors,
+   * With only defining themes, one couldn't get non AngularJS Material elements colored with Material colors,
    * `$mdColors` service is used by the md-color directive to convert the 1..n color expressions to RGBA values and will apply
    * those values to element as CSS property values.
    *
@@ -48257,6 +48427,7 @@ function MdDialogDirective($$rAF, $mdTheming, $mdDialog) {
  *      in parallel the close animations.
  *   - `fullscreen` `{boolean=}`: An option to toggle whether the dialog should show in fullscreen
  *      or not. Defaults to `false`.
+ *   - `multiple` `{boolean=}`: An option to allow this dialog to display over one that's currently open.
  * @returns {promise} A promise that can be resolved with `$mdDialog.hide()` or
  * rejected with `$mdDialog.cancel()`.
  */
@@ -49111,7 +49282,7 @@ function MdDividerDirective($mdTheming) {
     };
 
     /*
-     * Angular Lifecycle hook for newer Angular versions.
+     * AngularJS Lifecycle hook for newer AngularJS versions.
      * Bindings are not guaranteed to have been assigned in the controller, but they are in the $onInit hook.
      */
     vm.$onInit = function() {
@@ -49122,7 +49293,7 @@ function MdDividerDirective($mdTheming) {
       fireInitialAnimations();
     };
 
-    // For Angular 1.4 and older, where there are no lifecycle hooks but bindings are pre-assigned,
+    // For AngularJS 1.4 and older, where there are no lifecycle hooks but bindings are pre-assigned,
     // manually call the $onInit hook.
     if (angular.version.major === 1 && angular.version.minor <= 4) {
       this.$onInit();
@@ -50132,8 +50303,17 @@ function GridListDirective($interpolate, $mdConstant, $mdGridLayout, $mdMedia) {
 
       // The width and horizontal position of each tile is always calculated the same way, but the
       // height and vertical position depends on the rowMode.
-      var style = {
-        left: POSITION({ unit: hUnit, offset: position.col, gutter: gutter }),
+      var ltr = document.dir != 'rtl' && document.body.dir != 'rtl';
+      var style = ltr ? {
+          left: POSITION({ unit: hUnit, offset: position.col, gutter: gutter }),
+          width: DIMENSION({ unit: hUnit, span: spans.col, gutter: gutter }),
+          // resets
+          paddingTop: '',
+          marginTop: '',
+          top: '',
+          height: ''
+        } : {
+        right: POSITION({ unit: hUnit, offset: position.col, gutter: gutter }),
         width: DIMENSION({ unit: hUnit, span: spans.col, gutter: gutter }),
         // resets
         paddingTop: '',
@@ -50945,7 +51125,7 @@ function labelDirective() {
  * - The textarea's height gets set on initialization, as well as while the user is typing. In certain situations
  * (e.g. while animating) the directive might have been initialized, before the element got it's final height. In
  * those cases, you can trigger a resize manually by broadcasting a `md-resize-textarea` event on the scope.
- * - If you wan't a `textarea` to stop growing at a certain point, you can specify the `max-rows` attribute.
+ * - If you want a `textarea` to stop growing at a certain point, you can specify the `max-rows` attribute.
  * - The textarea's bottom border acts as a handle which users can drag, in order to resize the element vertically.
  * Once the user has resized a `textarea`, the autogrowing functionality becomes disabled. If you don't want a
  * `textarea` to be resizeable by the user, you can add the `md-no-resize` attribute.
@@ -51021,7 +51201,7 @@ function inputTextareaDirective($mdUtil, $window, $mdAria, $timeout, $mdGesture)
     scope.$watch(isErrorGetter, containerCtrl.setInvalid);
 
     // When the developer uses the ngValue directive for the input, we have to observe the attribute, because
-    // Angular's ngValue directive is just setting the `value` attribute.
+    // AngularJS's ngValue directive is just setting the `value` attribute.
     if (attr.ngValue) {
       attr.$observe('value', inputCheckValue);
     }
@@ -51096,7 +51276,7 @@ function inputTextareaDirective($mdUtil, $window, $mdAria, $timeout, $mdGesture)
       }, 10, false);
 
       // We could leverage ngModel's $parsers here, however it
-      // isn't reliable, because Angular trims the input by default,
+      // isn't reliable, because AngularJS trims the input by default,
       // which means that growTextarea won't fire when newlines and
       // spaces are added.
       element.on('input', growTextarea);
@@ -51348,7 +51528,7 @@ function placeholderDirective($compile) {
       // Note that we need to do this in the pre-link, as opposed to the post link, if we want to
       // support data bindings in the placeholder. This is necessary, because we have a case where
       // we transfer the placeholder value to the `<label>` and we remove it from the original `<input>`.
-      // If we did this in the post-link, Angular would have set up the observers already and would be
+      // If we did this in the post-link, AngularJS would have set up the observers already and would be
       // re-adding the attribute, even though we removed it from the element.
       pre: preLink
     }
@@ -51373,7 +51553,7 @@ function placeholderDirective($compile) {
       // Move the placeholder expression to the label
       var newLabel = angular.element('<label ng-click="delegateClick()" tabindex="-1">' + attr.placeholder + '</label>');
 
-      // Note that we unset it via `attr`, in order to get Angular
+      // Note that we unset it via `attr`, in order to get AngularJS
       // to remove any observers that it might have set up. Otherwise
       // the attribute will be added on the next digest.
       attr.$set('placeholder', null);
@@ -52358,6 +52538,601 @@ angular.module('material.components.menuBar', [
 
 /**
  * @ngdoc module
+ * @name material.components.navBar
+ */
+
+
+MdNavBarController.$inject = ["$element", "$scope", "$timeout", "$mdConstant"];
+MdNavItem.$inject = ["$mdAria", "$$rAF"];
+MdNavItemController.$inject = ["$element"];
+MdNavBar.$inject = ["$mdAria", "$mdTheming"];
+angular.module('material.components.navBar', ['material.core'])
+    .controller('MdNavBarController', MdNavBarController)
+    .directive('mdNavBar', MdNavBar)
+    .controller('MdNavItemController', MdNavItemController)
+    .directive('mdNavItem', MdNavItem);
+
+
+/*****************************************************************************
+ *                            PUBLIC DOCUMENTATION                           *
+ *****************************************************************************/
+/**
+ * @ngdoc directive
+ * @name mdNavBar
+ * @module material.components.navBar
+ *
+ * @restrict E
+ *
+ * @description
+ * The `<md-nav-bar>` directive renders a list of material tabs that can be used
+ * for top-level page navigation. Unlike `<md-tabs>`, it has no concept of a tab
+ * body and no bar pagination.
+ *
+ * Because it deals with page navigation, certain routing concepts are built-in.
+ * Route changes via via ng-href, ui-sref, or ng-click events are supported.
+ * Alternatively, the user could simply watch currentNavItem for changes.
+ *
+ * Accessibility functionality is implemented as a site navigator with a
+ * listbox, according to
+ * https://www.w3.org/TR/wai-aria-practices/#Site_Navigator_Tabbed_Style
+ *
+ * @param {string=} mdSelectedNavItem The name of the current tab; this must
+ *     match the name attribute of `<md-nav-item>`
+ * @param {boolean=} mdNoInkBar If set to true, the ink bar will be hidden.
+ * @param {string=} navBarAriaLabel An aria-label for the nav-bar
+ *
+ * @usage
+ * <hljs lang="html">
+ *  <md-nav-bar md-selected-nav-item="currentNavItem">
+ *    <md-nav-item md-nav-click="goto('page1')" name="page1">
+ *      Page One
+ *    </md-nav-item>
+ *    <md-nav-item md-nav-href="#page2" name="page3">Page Two</md-nav-item>
+ *    <md-nav-item md-nav-sref="page3" name="page2">Page Three</md-nav-item>
+ *    <md-nav-item
+ *      md-nav-sref="app.page4"
+ *      sref-opts="{reload: true, notify: true}"
+ *      name="page4">
+ *      Page Four
+ *    </md-nav-item>
+ *  </md-nav-bar>
+ *</hljs>
+ * <hljs lang="js">
+ * (function() {
+ *   'use strict';
+ *
+ *    $rootScope.$on('$routeChangeSuccess', function(event, current) {
+ *      $scope.currentLink = getCurrentLinkFromRoute(current);
+ *    });
+ * });
+ * </hljs>
+ */
+
+/*****************************************************************************
+ *                            mdNavItem
+ *****************************************************************************/
+/**
+ * @ngdoc directive
+ * @name mdNavItem
+ * @module material.components.navBar
+ *
+ * @restrict E
+ *
+ * @description
+ * `<md-nav-item>` describes a page navigation link within the `<md-nav-bar>`
+ * component. It renders an md-button as the actual link.
+ *
+ * Exactly one of the mdNavClick, mdNavHref, mdNavSref attributes are required
+ * to be specified.
+ *
+ * @param {Function=} mdNavClick Function which will be called when the
+ *     link is clicked to change the page. Renders as an `ng-click`.
+ * @param {string=} mdNavHref url to transition to when this link is clicked.
+ *     Renders as an `ng-href`.
+ * @param {string=} mdNavSref Ui-router state to transition to when this link is
+ *     clicked. Renders as a `ui-sref`.
+ * @param {!Object=} srefOpts Ui-router options that are passed to the
+ *     `$state.go()` function. See the [Ui-router documentation for details]
+ *     (https://ui-router.github.io/docs/latest/interfaces/transition.transitionoptions.html).
+ * @param {string=} name The name of this link. Used by the nav bar to know
+ *     which link is currently selected.
+ * @param {string=} aria-label Adds alternative text for accessibility
+ *
+ * @usage
+ * See `<md-nav-bar>` for usage.
+ */
+
+
+/*****************************************************************************
+ *                                IMPLEMENTATION                             *
+ *****************************************************************************/
+
+function MdNavBar($mdAria, $mdTheming) {
+  return {
+    restrict: 'E',
+    transclude: true,
+    controller: MdNavBarController,
+    controllerAs: 'ctrl',
+    bindToController: true,
+    scope: {
+      'mdSelectedNavItem': '=?',
+      'mdNoInkBar': '=?',
+      'navBarAriaLabel': '@?',
+    },
+    template:
+      '<div class="md-nav-bar">' +
+        '<nav role="navigation">' +
+          '<ul class="_md-nav-bar-list" ng-transclude role="listbox"' +
+            'tabindex="0"' +
+            'ng-focus="ctrl.onFocus()"' +
+            'ng-keydown="ctrl.onKeydown($event)"' +
+            'aria-label="{{ctrl.navBarAriaLabel}}">' +
+          '</ul>' +
+        '</nav>' +
+        '<md-nav-ink-bar ng-hide="ctrl.mdNoInkBar"></md-nav-ink-bar>' +
+      '</div>',
+    link: function(scope, element, attrs, ctrl) {
+      $mdTheming(element);
+      if (!ctrl.navBarAriaLabel) {
+        $mdAria.expectAsync(element, 'aria-label', angular.noop);
+      }
+    },
+  };
+}
+
+/**
+ * Controller for the nav-bar component.
+ *
+ * Accessibility functionality is implemented as a site navigator with a
+ * listbox, according to
+ * https://www.w3.org/TR/wai-aria-practices/#Site_Navigator_Tabbed_Style
+ * @param {!angular.JQLite} $element
+ * @param {!angular.Scope} $scope
+ * @param {!angular.Timeout} $timeout
+ * @param {!Object} $mdConstant
+ * @constructor
+ * @final
+ * @ngInject
+ */
+function MdNavBarController($element, $scope, $timeout, $mdConstant) {
+  // Injected variables
+  /** @private @const {!angular.Timeout} */
+  this._$timeout = $timeout;
+
+  /** @private @const {!angular.Scope} */
+  this._$scope = $scope;
+
+  /** @private @const {!Object} */
+  this._$mdConstant = $mdConstant;
+
+  // Data-bound variables.
+  /** @type {string} */
+  this.mdSelectedNavItem;
+
+  /** @type {string} */
+  this.navBarAriaLabel;
+
+  // State variables.
+
+  /** @type {?angular.JQLite} */
+  this._navBarEl = $element[0];
+
+  /** @type {?angular.JQLite} */
+  this._inkbar;
+
+  var self = this;
+  // need to wait for transcluded content to be available
+  var deregisterTabWatch = this._$scope.$watch(function() {
+    return self._navBarEl.querySelectorAll('._md-nav-button').length;
+  },
+  function(newLength) {
+    if (newLength > 0) {
+      self._initTabs();
+      deregisterTabWatch();
+    }
+  });
+}
+
+
+
+/**
+ * Initializes the tab components once they exist.
+ * @private
+ */
+MdNavBarController.prototype._initTabs = function() {
+  this._inkbar = angular.element(this._navBarEl.querySelector('md-nav-ink-bar'));
+
+  var self = this;
+  this._$timeout(function() {
+    self._updateTabs(self.mdSelectedNavItem, undefined);
+  });
+
+  this._$scope.$watch('ctrl.mdSelectedNavItem', function(newValue, oldValue) {
+    // Wait a digest before update tabs for products doing
+    // anything dynamic in the template.
+    self._$timeout(function() {
+      self._updateTabs(newValue, oldValue);
+    });
+  });
+};
+
+/**
+ * Set the current tab to be selected.
+ * @param {string|undefined} newValue New current tab name.
+ * @param {string|undefined} oldValue Previous tab name.
+ * @private
+ */
+MdNavBarController.prototype._updateTabs = function(newValue, oldValue) {
+  var self = this;
+  var tabs = this._getTabs();
+
+  // this._getTabs can return null if nav-bar has not yet been initialized
+  if(!tabs)
+    return;
+
+  var oldIndex = -1;
+  var newIndex = -1;
+  var newTab = this._getTabByName(newValue);
+  var oldTab = this._getTabByName(oldValue);
+
+  if (oldTab) {
+    oldTab.setSelected(false);
+    oldIndex = tabs.indexOf(oldTab);
+  }
+
+  if (newTab) {
+    newTab.setSelected(true);
+    newIndex = tabs.indexOf(newTab);
+  }
+
+  this._$timeout(function() {
+    self._updateInkBarStyles(newTab, newIndex, oldIndex);
+  });
+};
+
+/**
+ * Repositions the ink bar to the selected tab.
+ * @private
+ */
+MdNavBarController.prototype._updateInkBarStyles = function(tab, newIndex, oldIndex) {
+  this._inkbar.toggleClass('_md-left', newIndex < oldIndex)
+      .toggleClass('_md-right', newIndex > oldIndex);
+
+  this._inkbar.css({display: newIndex < 0 ? 'none' : ''});
+
+  if (tab) {
+    var tabEl = tab.getButtonEl();
+    var left = tabEl.offsetLeft;
+
+    this._inkbar.css({left: left + 'px', width: tabEl.offsetWidth + 'px'});
+  }
+};
+
+/**
+ * Returns an array of the current tabs.
+ * @return {!Array<!NavItemController>}
+ * @private
+ */
+MdNavBarController.prototype._getTabs = function() {
+  var controllers = Array.prototype.slice.call(
+    this._navBarEl.querySelectorAll('.md-nav-item'))
+    .map(function(el) {
+      return angular.element(el).controller('mdNavItem')
+    });
+  return controllers.indexOf(undefined) ? controllers : null;
+};
+
+/**
+ * Returns the tab with the specified name.
+ * @param {string} name The name of the tab, found in its name attribute.
+ * @return {!NavItemController|undefined}
+ * @private
+ */
+MdNavBarController.prototype._getTabByName = function(name) {
+  return this._findTab(function(tab) {
+    return tab.getName() == name;
+  });
+};
+
+/**
+ * Returns the selected tab.
+ * @return {!NavItemController|undefined}
+ * @private
+ */
+MdNavBarController.prototype._getSelectedTab = function() {
+  return this._findTab(function(tab) {
+    return tab.isSelected();
+  });
+};
+
+/**
+ * Returns the focused tab.
+ * @return {!NavItemController|undefined}
+ */
+MdNavBarController.prototype.getFocusedTab = function() {
+  return this._findTab(function(tab) {
+    return tab.hasFocus();
+  });
+};
+
+/**
+ * Find a tab that matches the specified function.
+ * @private
+ */
+MdNavBarController.prototype._findTab = function(fn) {
+  var tabs = this._getTabs();
+  for (var i = 0; i < tabs.length; i++) {
+    if (fn(tabs[i])) {
+      return tabs[i];
+    }
+  }
+
+  return null;
+};
+
+/**
+ * Direct focus to the selected tab when focus enters the nav bar.
+ */
+MdNavBarController.prototype.onFocus = function() {
+  var tab = this._getSelectedTab();
+  if (tab) {
+    tab.setFocused(true);
+  }
+};
+
+/**
+ * Move focus from oldTab to newTab.
+ * @param {!NavItemController} oldTab
+ * @param {!NavItemController} newTab
+ * @private
+ */
+MdNavBarController.prototype._moveFocus = function(oldTab, newTab) {
+  oldTab.setFocused(false);
+  newTab.setFocused(true);
+};
+
+/**
+ * Responds to keypress events.
+ * @param {!Event} e
+ */
+MdNavBarController.prototype.onKeydown = function(e) {
+  var keyCodes = this._$mdConstant.KEY_CODE;
+  var tabs = this._getTabs();
+  var focusedTab = this.getFocusedTab();
+  if (!focusedTab) return;
+
+  var focusedTabIndex = tabs.indexOf(focusedTab);
+
+  // use arrow keys to navigate between tabs
+  switch (e.keyCode) {
+    case keyCodes.UP_ARROW:
+    case keyCodes.LEFT_ARROW:
+      if (focusedTabIndex > 0) {
+        this._moveFocus(focusedTab, tabs[focusedTabIndex - 1]);
+      }
+      break;
+    case keyCodes.DOWN_ARROW:
+    case keyCodes.RIGHT_ARROW:
+      if (focusedTabIndex < tabs.length - 1) {
+        this._moveFocus(focusedTab, tabs[focusedTabIndex + 1]);
+      }
+      break;
+    case keyCodes.SPACE:
+    case keyCodes.ENTER:
+      // timeout to avoid a "digest already in progress" console error
+      this._$timeout(function() {
+        focusedTab.getButtonEl().click();
+      });
+      break;
+  }
+};
+
+/**
+ * @ngInject
+ */
+function MdNavItem($mdAria, $$rAF) {
+  return {
+    restrict: 'E',
+    require: ['mdNavItem', '^mdNavBar'],
+    controller: MdNavItemController,
+    bindToController: true,
+    controllerAs: 'ctrl',
+    replace: true,
+    transclude: true,
+    template: function(tElement, tAttrs) {
+      var hasNavClick = tAttrs.mdNavClick;
+      var hasNavHref = tAttrs.mdNavHref;
+      var hasNavSref = tAttrs.mdNavSref;
+      var hasSrefOpts = tAttrs.srefOpts;
+      var navigationAttribute;
+      var navigationOptions;
+      var buttonTemplate;
+
+      // Cannot specify more than one nav attribute
+      if ((hasNavClick ? 1:0) + (hasNavHref ? 1:0) + (hasNavSref ? 1:0) > 1) {
+        throw Error(
+          'Must not specify more than one of the md-nav-click, md-nav-href, ' +
+          'or md-nav-sref attributes per nav-item directive.'
+        );
+      }
+
+      if (hasNavClick) {
+        navigationAttribute = 'ng-click="ctrl.mdNavClick()"';
+      } else if (hasNavHref) {
+        navigationAttribute = 'ng-href="{{ctrl.mdNavHref}}"';
+      } else if (hasNavSref) {
+        navigationAttribute = 'ui-sref="{{ctrl.mdNavSref}}"';
+      }
+
+      navigationOptions = hasSrefOpts ? 'ui-sref-opts="{{ctrl.srefOpts}}" ' : '';
+
+      if (navigationAttribute) {
+        buttonTemplate = '' +
+          '<md-button class="_md-nav-button md-accent" ' +
+            'ng-class="ctrl.getNgClassMap()" ' +
+            'ng-blur="ctrl.setFocused(false)" ' +
+            'tabindex="-1" ' +
+            navigationOptions +
+            navigationAttribute + '>' +
+            '<span ng-transclude class="_md-nav-button-text"></span>' +
+          '</md-button>';
+      }
+
+      return '' +
+        '<li class="md-nav-item" ' +
+          'role="option" ' +
+          'aria-selected="{{ctrl.isSelected()}}">' +
+          (buttonTemplate || '') +
+        '</li>';
+    },
+    scope: {
+      'mdNavClick': '&?',
+      'mdNavHref': '@?',
+      'mdNavSref': '@?',
+      'srefOpts': '=?',
+      'name': '@',
+    },
+    link: function(scope, element, attrs, controllers) {
+      // When accessing the element's contents synchronously, they
+      // may not be defined yet because of transclusion. There is a higher
+      // chance that it will be accessible if we wait one frame.
+      $$rAF(function() {
+        var mdNavItem = controllers[0];
+        var mdNavBar = controllers[1];
+        var navButton = angular.element(element[0].querySelector('._md-nav-button'));
+
+        if (!mdNavItem.name) {
+          mdNavItem.name = angular.element(element[0]
+              .querySelector('._md-nav-button-text')).text().trim();
+        }
+
+        navButton.on('click', function() {
+          mdNavBar.mdSelectedNavItem = mdNavItem.name;
+          scope.$apply();
+        });
+
+        $mdAria.expectWithText(element, 'aria-label');
+      });
+    }
+  };
+}
+
+/**
+ * Controller for the nav-item component.
+ * @param {!angular.JQLite} $element
+ * @constructor
+ * @final
+ * @ngInject
+ */
+function MdNavItemController($element) {
+
+  /** @private @const {!angular.JQLite} */
+  this._$element = $element;
+
+  // Data-bound variables
+
+  /** @const {?Function} */
+  this.mdNavClick;
+
+  /** @const {?string} */
+  this.mdNavHref;
+
+  /** @const {?string} */
+  this.mdNavSref;
+  /** @const {?Object} */
+  this.srefOpts;
+  /** @const {?string} */
+  this.name;
+
+  // State variables
+  /** @private {boolean} */
+  this._selected = false;
+
+  /** @private {boolean} */
+  this._focused = false;
+}
+
+/**
+ * Returns a map of class names and values for use by ng-class.
+ * @return {!Object<string,boolean>}
+ */
+MdNavItemController.prototype.getNgClassMap = function() {
+  return {
+    'md-active': this._selected,
+    'md-primary': this._selected,
+    'md-unselected': !this._selected,
+    'md-focused': this._focused,
+  };
+};
+
+/**
+ * Get the name attribute of the tab.
+ * @return {string}
+ */
+MdNavItemController.prototype.getName = function() {
+  return this.name;
+};
+
+/**
+ * Get the button element associated with the tab.
+ * @return {!Element}
+ */
+MdNavItemController.prototype.getButtonEl = function() {
+  return this._$element[0].querySelector('._md-nav-button');
+};
+
+/**
+ * Set the selected state of the tab.
+ * @param {boolean} isSelected
+ */
+MdNavItemController.prototype.setSelected = function(isSelected) {
+  this._selected = isSelected;
+};
+
+/**
+ * @return {boolean}
+ */
+MdNavItemController.prototype.isSelected = function() {
+  return this._selected;
+};
+
+/**
+ * Set the focused state of the tab.
+ * @param {boolean} isFocused
+ */
+MdNavItemController.prototype.setFocused = function(isFocused) {
+  this._focused = isFocused;
+
+  if (isFocused) {
+    this.getButtonEl().focus();
+  }
+};
+
+/**
+ * @return {boolean}
+ */
+MdNavItemController.prototype.hasFocus = function() {
+  return this._focused;
+};
+
+})();
+(function(){
+"use strict";
+
+/**
+ * @ngdoc module
+ * @name material.components.progressCircular
+ * @description Module for a circular progressbar
+ */
+
+angular.module('material.components.progressCircular', ['material.core']);
+
+})();
+(function(){
+"use strict";
+
+/**
+ * @ngdoc module
  * @name material.components.panel
  */
 MdPanelService.$inject = ["presets", "$rootElement", "$rootScope", "$injector", "$window"];
@@ -52575,7 +53350,7 @@ angular
  *     interaction when there is no backdrop and events are propagated. Defaults
  *     to an arbitrary string that is not tracked.
  *   - `template` - `{string=}`: HTML template to show in the panel. This
- *     **must** be trusted HTML with respect to Angular’s
+ *     **must** be trusted HTML with respect to AngularJS’s
  *     [$sce service](https://docs.angularjs.org/api/ng/service/$sce).
  *   - `templateUrl` - `{string=}`: The URL that will be used as the content of
  *     the panel.
@@ -53346,7 +54121,7 @@ function clearPresets() {
 
 
 /**
- * Represents the `$get` method of the Angular provider. From here, a new
+ * Represents the `$get` method of the AngularJS provider. From here, a new
  * reference to the MdPanelService is returned where the needed arguments are
  * passed in including the MdPanelProvider `_presets`.
  * @param {!Object} _presets
@@ -53668,7 +54443,7 @@ MdPanelService.prototype._wrapTemplate = function(origTemplate) {
   // height and width for positioning.
   return '' +
       '<div class="md-panel-outer-wrapper">' +
-      '  <div class="md-panel" style="left: -9999px;">' + template + '</div>' +
+      '  <div class="md-panel _md-panel-offscreen">' + template + '</div>' +
       '</div>';
 };
 
@@ -53684,7 +54459,7 @@ MdPanelService.prototype._wrapTemplate = function(origTemplate) {
 MdPanelService.prototype._wrapContentElement = function(contentElement) {
   var wrapper = angular.element('<div class="md-panel-outer-wrapper">');
 
-  contentElement.addClass('md-panel').css('left', '-9999px');
+  contentElement.addClass('md-panel _md-panel-offscreen');
   wrapper.append(contentElement);
 
   return wrapper;
@@ -54083,7 +54858,7 @@ MdPanelRef.prototype.hide = function() {
 MdPanelRef.prototype.addClass = function(newClass, toElement) {
   this._$log.warn(
       'mdPanel: The addClass method is in the process of being deprecated. ' +
-      'Full deprecation is scheduled for the Angular Material 1.2 release. ' +
+      'Full deprecation is scheduled for the AngularJS Material 1.2 release. ' +
       'To achieve the same results, use the panelContainer or panelEl ' +
       'JQLite elements that are referenced in MdPanelRef.');
 
@@ -54114,7 +54889,7 @@ MdPanelRef.prototype.addClass = function(newClass, toElement) {
 MdPanelRef.prototype.removeClass = function(oldClass, fromElement) {
   this._$log.warn(
       'mdPanel: The removeClass method is in the process of being deprecated. ' +
-      'Full deprecation is scheduled for the Angular Material 1.2 release. ' +
+      'Full deprecation is scheduled for the AngularJS Material 1.2 release. ' +
       'To achieve the same results, use the panelContainer or panelEl ' +
       'JQLite elements that are referenced in MdPanelRef.');
 
@@ -54145,7 +54920,7 @@ MdPanelRef.prototype.removeClass = function(oldClass, fromElement) {
 MdPanelRef.prototype.toggleClass = function(toggleClass, onElement) {
   this._$log.warn(
       'mdPanel: The toggleClass method is in the process of being deprecated. ' +
-      'Full deprecation is scheduled for the Angular Material 1.2 release. ' +
+      'Full deprecation is scheduled for the AngularJS Material 1.2 release. ' +
       'To achieve the same results, use the panelContainer or panelEl ' +
       'JQLite elements that are referenced in MdPanelRef.');
 
@@ -54277,8 +55052,8 @@ MdPanelRef.prototype._addStyles = function() {
       // Theme the element and container.
       self._setTheming();
 
-      // Remove left: -9999px and add hidden class.
-      self.panelEl.css('left', '');
+      // Remove offscreen class and add hidden class.
+      self.panelEl.removeClass('_md-panel-offscreen');
       self.panelContainer.addClass(MD_PANEL_HIDDEN);
 
       resolve(self);
@@ -54349,6 +55124,7 @@ MdPanelRef.prototype._updatePosition = function(init) {
 
     // Hide the panel now that position is known.
     if (init) {
+      this.panelEl.removeClass('_md-panel-offscreen');
       this.panelContainer.addClass(MD_PANEL_HIDDEN);
     }
 
@@ -55898,601 +56674,6 @@ function getComputedTranslations(el, property) {
 
 /**
  * @ngdoc module
- * @name material.components.navBar
- */
-
-
-MdNavBarController.$inject = ["$element", "$scope", "$timeout", "$mdConstant"];
-MdNavItem.$inject = ["$mdAria", "$$rAF"];
-MdNavItemController.$inject = ["$element"];
-MdNavBar.$inject = ["$mdAria", "$mdTheming"];
-angular.module('material.components.navBar', ['material.core'])
-    .controller('MdNavBarController', MdNavBarController)
-    .directive('mdNavBar', MdNavBar)
-    .controller('MdNavItemController', MdNavItemController)
-    .directive('mdNavItem', MdNavItem);
-
-
-/*****************************************************************************
- *                            PUBLIC DOCUMENTATION                           *
- *****************************************************************************/
-/**
- * @ngdoc directive
- * @name mdNavBar
- * @module material.components.navBar
- *
- * @restrict E
- *
- * @description
- * The `<md-nav-bar>` directive renders a list of material tabs that can be used
- * for top-level page navigation. Unlike `<md-tabs>`, it has no concept of a tab
- * body and no bar pagination.
- *
- * Because it deals with page navigation, certain routing concepts are built-in.
- * Route changes via via ng-href, ui-sref, or ng-click events are supported.
- * Alternatively, the user could simply watch currentNavItem for changes.
- *
- * Accessibility functionality is implemented as a site navigator with a
- * listbox, according to
- * https://www.w3.org/TR/wai-aria-practices/#Site_Navigator_Tabbed_Style
- *
- * @param {string=} mdSelectedNavItem The name of the current tab; this must
- *     match the name attribute of `<md-nav-item>`
- * @param {boolean=} mdNoInkBar If set to true, the ink bar will be hidden.
- * @param {string=} navBarAriaLabel An aria-label for the nav-bar
- *
- * @usage
- * <hljs lang="html">
- *  <md-nav-bar md-selected-nav-item="currentNavItem">
- *    <md-nav-item md-nav-click="goto('page1')" name="page1">
- *      Page One
- *    </md-nav-item>
- *    <md-nav-item md-nav-href="#page2" name="page3">Page Two</md-nav-item>
- *    <md-nav-item md-nav-sref="page3" name="page2">Page Three</md-nav-item>
- *    <md-nav-item
- *      md-nav-sref="app.page4"
- *      sref-opts="{reload: true, notify: true}"
- *      name="page4">
- *      Page Four
- *    </md-nav-item>
- *  </md-nav-bar>
- *</hljs>
- * <hljs lang="js">
- * (function() {
- *   'use strict';
- *
- *    $rootScope.$on('$routeChangeSuccess', function(event, current) {
- *      $scope.currentLink = getCurrentLinkFromRoute(current);
- *    });
- * });
- * </hljs>
- */
-
-/*****************************************************************************
- *                            mdNavItem
- *****************************************************************************/
-/**
- * @ngdoc directive
- * @name mdNavItem
- * @module material.components.navBar
- *
- * @restrict E
- *
- * @description
- * `<md-nav-item>` describes a page navigation link within the `<md-nav-bar>`
- * component. It renders an md-button as the actual link.
- *
- * Exactly one of the mdNavClick, mdNavHref, mdNavSref attributes are required
- * to be specified.
- *
- * @param {Function=} mdNavClick Function which will be called when the
- *     link is clicked to change the page. Renders as an `ng-click`.
- * @param {string=} mdNavHref url to transition to when this link is clicked.
- *     Renders as an `ng-href`.
- * @param {string=} mdNavSref Ui-router state to transition to when this link is
- *     clicked. Renders as a `ui-sref`.
- * @param {!Object=} srefOpts Ui-router options that are passed to the
- *     `$state.go()` function. See the [Ui-router documentation for details]
- *     (https://ui-router.github.io/docs/latest/interfaces/transition.transitionoptions.html).
- * @param {string=} name The name of this link. Used by the nav bar to know
- *     which link is currently selected.
- * @param {string=} aria-label Adds alternative text for accessibility
- *
- * @usage
- * See `<md-nav-bar>` for usage.
- */
-
-
-/*****************************************************************************
- *                                IMPLEMENTATION                             *
- *****************************************************************************/
-
-function MdNavBar($mdAria, $mdTheming) {
-  return {
-    restrict: 'E',
-    transclude: true,
-    controller: MdNavBarController,
-    controllerAs: 'ctrl',
-    bindToController: true,
-    scope: {
-      'mdSelectedNavItem': '=?',
-      'mdNoInkBar': '=?',
-      'navBarAriaLabel': '@?',
-    },
-    template:
-      '<div class="md-nav-bar">' +
-        '<nav role="navigation">' +
-          '<ul class="_md-nav-bar-list" ng-transclude role="listbox"' +
-            'tabindex="0"' +
-            'ng-focus="ctrl.onFocus()"' +
-            'ng-keydown="ctrl.onKeydown($event)"' +
-            'aria-label="{{ctrl.navBarAriaLabel}}">' +
-          '</ul>' +
-        '</nav>' +
-        '<md-nav-ink-bar ng-hide="ctrl.mdNoInkBar"></md-nav-ink-bar>' +
-      '</div>',
-    link: function(scope, element, attrs, ctrl) {
-      $mdTheming(element);
-      if (!ctrl.navBarAriaLabel) {
-        $mdAria.expectAsync(element, 'aria-label', angular.noop);
-      }
-    },
-  };
-}
-
-/**
- * Controller for the nav-bar component.
- *
- * Accessibility functionality is implemented as a site navigator with a
- * listbox, according to
- * https://www.w3.org/TR/wai-aria-practices/#Site_Navigator_Tabbed_Style
- * @param {!angular.JQLite} $element
- * @param {!angular.Scope} $scope
- * @param {!angular.Timeout} $timeout
- * @param {!Object} $mdConstant
- * @constructor
- * @final
- * @ngInject
- */
-function MdNavBarController($element, $scope, $timeout, $mdConstant) {
-  // Injected variables
-  /** @private @const {!angular.Timeout} */
-  this._$timeout = $timeout;
-
-  /** @private @const {!angular.Scope} */
-  this._$scope = $scope;
-
-  /** @private @const {!Object} */
-  this._$mdConstant = $mdConstant;
-
-  // Data-bound variables.
-  /** @type {string} */
-  this.mdSelectedNavItem;
-
-  /** @type {string} */
-  this.navBarAriaLabel;
-
-  // State variables.
-
-  /** @type {?angular.JQLite} */
-  this._navBarEl = $element[0];
-
-  /** @type {?angular.JQLite} */
-  this._inkbar;
-
-  var self = this;
-  // need to wait for transcluded content to be available
-  var deregisterTabWatch = this._$scope.$watch(function() {
-    return self._navBarEl.querySelectorAll('._md-nav-button').length;
-  },
-  function(newLength) {
-    if (newLength > 0) {
-      self._initTabs();
-      deregisterTabWatch();
-    }
-  });
-}
-
-
-
-/**
- * Initializes the tab components once they exist.
- * @private
- */
-MdNavBarController.prototype._initTabs = function() {
-  this._inkbar = angular.element(this._navBarEl.querySelector('md-nav-ink-bar'));
-
-  var self = this;
-  this._$timeout(function() {
-    self._updateTabs(self.mdSelectedNavItem, undefined);
-  });
-
-  this._$scope.$watch('ctrl.mdSelectedNavItem', function(newValue, oldValue) {
-    // Wait a digest before update tabs for products doing
-    // anything dynamic in the template.
-    self._$timeout(function() {
-      self._updateTabs(newValue, oldValue);
-    });
-  });
-};
-
-/**
- * Set the current tab to be selected.
- * @param {string|undefined} newValue New current tab name.
- * @param {string|undefined} oldValue Previous tab name.
- * @private
- */
-MdNavBarController.prototype._updateTabs = function(newValue, oldValue) {
-  var self = this;
-  var tabs = this._getTabs();
-
-  // this._getTabs can return null if nav-bar has not yet been initialized
-  if(!tabs)
-    return;
-
-  var oldIndex = -1;
-  var newIndex = -1;
-  var newTab = this._getTabByName(newValue);
-  var oldTab = this._getTabByName(oldValue);
-
-  if (oldTab) {
-    oldTab.setSelected(false);
-    oldIndex = tabs.indexOf(oldTab);
-  }
-
-  if (newTab) {
-    newTab.setSelected(true);
-    newIndex = tabs.indexOf(newTab);
-  }
-
-  this._$timeout(function() {
-    self._updateInkBarStyles(newTab, newIndex, oldIndex);
-  });
-};
-
-/**
- * Repositions the ink bar to the selected tab.
- * @private
- */
-MdNavBarController.prototype._updateInkBarStyles = function(tab, newIndex, oldIndex) {
-  this._inkbar.toggleClass('_md-left', newIndex < oldIndex)
-      .toggleClass('_md-right', newIndex > oldIndex);
-
-  this._inkbar.css({display: newIndex < 0 ? 'none' : ''});
-
-  if (tab) {
-    var tabEl = tab.getButtonEl();
-    var left = tabEl.offsetLeft;
-
-    this._inkbar.css({left: left + 'px', width: tabEl.offsetWidth + 'px'});
-  }
-};
-
-/**
- * Returns an array of the current tabs.
- * @return {!Array<!NavItemController>}
- * @private
- */
-MdNavBarController.prototype._getTabs = function() {
-  var controllers = Array.prototype.slice.call(
-    this._navBarEl.querySelectorAll('.md-nav-item'))
-    .map(function(el) {
-      return angular.element(el).controller('mdNavItem')
-    });
-  return controllers.indexOf(undefined) ? controllers : null;
-};
-
-/**
- * Returns the tab with the specified name.
- * @param {string} name The name of the tab, found in its name attribute.
- * @return {!NavItemController|undefined}
- * @private
- */
-MdNavBarController.prototype._getTabByName = function(name) {
-  return this._findTab(function(tab) {
-    return tab.getName() == name;
-  });
-};
-
-/**
- * Returns the selected tab.
- * @return {!NavItemController|undefined}
- * @private
- */
-MdNavBarController.prototype._getSelectedTab = function() {
-  return this._findTab(function(tab) {
-    return tab.isSelected();
-  });
-};
-
-/**
- * Returns the focused tab.
- * @return {!NavItemController|undefined}
- */
-MdNavBarController.prototype.getFocusedTab = function() {
-  return this._findTab(function(tab) {
-    return tab.hasFocus();
-  });
-};
-
-/**
- * Find a tab that matches the specified function.
- * @private
- */
-MdNavBarController.prototype._findTab = function(fn) {
-  var tabs = this._getTabs();
-  for (var i = 0; i < tabs.length; i++) {
-    if (fn(tabs[i])) {
-      return tabs[i];
-    }
-  }
-
-  return null;
-};
-
-/**
- * Direct focus to the selected tab when focus enters the nav bar.
- */
-MdNavBarController.prototype.onFocus = function() {
-  var tab = this._getSelectedTab();
-  if (tab) {
-    tab.setFocused(true);
-  }
-};
-
-/**
- * Move focus from oldTab to newTab.
- * @param {!NavItemController} oldTab
- * @param {!NavItemController} newTab
- * @private
- */
-MdNavBarController.prototype._moveFocus = function(oldTab, newTab) {
-  oldTab.setFocused(false);
-  newTab.setFocused(true);
-};
-
-/**
- * Responds to keypress events.
- * @param {!Event} e
- */
-MdNavBarController.prototype.onKeydown = function(e) {
-  var keyCodes = this._$mdConstant.KEY_CODE;
-  var tabs = this._getTabs();
-  var focusedTab = this.getFocusedTab();
-  if (!focusedTab) return;
-
-  var focusedTabIndex = tabs.indexOf(focusedTab);
-
-  // use arrow keys to navigate between tabs
-  switch (e.keyCode) {
-    case keyCodes.UP_ARROW:
-    case keyCodes.LEFT_ARROW:
-      if (focusedTabIndex > 0) {
-        this._moveFocus(focusedTab, tabs[focusedTabIndex - 1]);
-      }
-      break;
-    case keyCodes.DOWN_ARROW:
-    case keyCodes.RIGHT_ARROW:
-      if (focusedTabIndex < tabs.length - 1) {
-        this._moveFocus(focusedTab, tabs[focusedTabIndex + 1]);
-      }
-      break;
-    case keyCodes.SPACE:
-    case keyCodes.ENTER:
-      // timeout to avoid a "digest already in progress" console error
-      this._$timeout(function() {
-        focusedTab.getButtonEl().click();
-      });
-      break;
-  }
-};
-
-/**
- * @ngInject
- */
-function MdNavItem($mdAria, $$rAF) {
-  return {
-    restrict: 'E',
-    require: ['mdNavItem', '^mdNavBar'],
-    controller: MdNavItemController,
-    bindToController: true,
-    controllerAs: 'ctrl',
-    replace: true,
-    transclude: true,
-    template: function(tElement, tAttrs) {
-      var hasNavClick = tAttrs.mdNavClick;
-      var hasNavHref = tAttrs.mdNavHref;
-      var hasNavSref = tAttrs.mdNavSref;
-      var hasSrefOpts = tAttrs.srefOpts;
-      var navigationAttribute;
-      var navigationOptions;
-      var buttonTemplate;
-
-      // Cannot specify more than one nav attribute
-      if ((hasNavClick ? 1:0) + (hasNavHref ? 1:0) + (hasNavSref ? 1:0) > 1) {
-        throw Error(
-          'Must not specify more than one of the md-nav-click, md-nav-href, ' +
-          'or md-nav-sref attributes per nav-item directive.'
-        );
-      }
-
-      if (hasNavClick) {
-        navigationAttribute = 'ng-click="ctrl.mdNavClick()"';
-      } else if (hasNavHref) {
-        navigationAttribute = 'ng-href="{{ctrl.mdNavHref}}"';
-      } else if (hasNavSref) {
-        navigationAttribute = 'ui-sref="{{ctrl.mdNavSref}}"';
-      }
-
-      navigationOptions = hasSrefOpts ? 'ui-sref-opts="{{ctrl.srefOpts}}" ' : '';
-
-      if (navigationAttribute) {
-        buttonTemplate = '' +
-          '<md-button class="_md-nav-button md-accent" ' +
-            'ng-class="ctrl.getNgClassMap()" ' +
-            'ng-blur="ctrl.setFocused(false)" ' +
-            'tabindex="-1" ' +
-            navigationOptions +
-            navigationAttribute + '>' +
-            '<span ng-transclude class="_md-nav-button-text"></span>' +
-          '</md-button>';
-      }
-
-      return '' +
-        '<li class="md-nav-item" ' +
-          'role="option" ' +
-          'aria-selected="{{ctrl.isSelected()}}">' +
-          (buttonTemplate || '') +
-        '</li>';
-    },
-    scope: {
-      'mdNavClick': '&?',
-      'mdNavHref': '@?',
-      'mdNavSref': '@?',
-      'srefOpts': '=?',
-      'name': '@',
-    },
-    link: function(scope, element, attrs, controllers) {
-      // When accessing the element's contents synchronously, they
-      // may not be defined yet because of transclusion. There is a higher
-      // chance that it will be accessible if we wait one frame.
-      $$rAF(function() {
-        var mdNavItem = controllers[0];
-        var mdNavBar = controllers[1];
-        var navButton = angular.element(element[0].querySelector('._md-nav-button'));
-
-        if (!mdNavItem.name) {
-          mdNavItem.name = angular.element(element[0]
-              .querySelector('._md-nav-button-text')).text().trim();
-        }
-
-        navButton.on('click', function() {
-          mdNavBar.mdSelectedNavItem = mdNavItem.name;
-          scope.$apply();
-        });
-
-        $mdAria.expectWithText(element, 'aria-label');
-      });
-    }
-  };
-}
-
-/**
- * Controller for the nav-item component.
- * @param {!angular.JQLite} $element
- * @constructor
- * @final
- * @ngInject
- */
-function MdNavItemController($element) {
-
-  /** @private @const {!angular.JQLite} */
-  this._$element = $element;
-
-  // Data-bound variables
-
-  /** @const {?Function} */
-  this.mdNavClick;
-
-  /** @const {?string} */
-  this.mdNavHref;
-
-  /** @const {?string} */
-  this.mdNavSref;
-  /** @const {?Object} */
-  this.srefOpts;
-  /** @const {?string} */
-  this.name;
-
-  // State variables
-  /** @private {boolean} */
-  this._selected = false;
-
-  /** @private {boolean} */
-  this._focused = false;
-}
-
-/**
- * Returns a map of class names and values for use by ng-class.
- * @return {!Object<string,boolean>}
- */
-MdNavItemController.prototype.getNgClassMap = function() {
-  return {
-    'md-active': this._selected,
-    'md-primary': this._selected,
-    'md-unselected': !this._selected,
-    'md-focused': this._focused,
-  };
-};
-
-/**
- * Get the name attribute of the tab.
- * @return {string}
- */
-MdNavItemController.prototype.getName = function() {
-  return this.name;
-};
-
-/**
- * Get the button element associated with the tab.
- * @return {!Element}
- */
-MdNavItemController.prototype.getButtonEl = function() {
-  return this._$element[0].querySelector('._md-nav-button');
-};
-
-/**
- * Set the selected state of the tab.
- * @param {boolean} isSelected
- */
-MdNavItemController.prototype.setSelected = function(isSelected) {
-  this._selected = isSelected;
-};
-
-/**
- * @return {boolean}
- */
-MdNavItemController.prototype.isSelected = function() {
-  return this._selected;
-};
-
-/**
- * Set the focused state of the tab.
- * @param {boolean} isFocused
- */
-MdNavItemController.prototype.setFocused = function(isFocused) {
-  this._focused = isFocused;
-
-  if (isFocused) {
-    this.getButtonEl().focus();
-  }
-};
-
-/**
- * @return {boolean}
- */
-MdNavItemController.prototype.hasFocus = function() {
-  return this._focused;
-};
-
-})();
-(function(){
-"use strict";
-
-/**
- * @ngdoc module
- * @name material.components.progressCircular
- * @description Module for a circular progressbar
- */
-
-angular.module('material.components.progressCircular', ['material.core']);
-
-})();
-(function(){
-"use strict";
-
-/**
- * @ngdoc module
  * @name material.components.progressLinear
  * @description Linear Progress module!
  */
@@ -56735,6 +56916,9 @@ angular.module('material.components.radioButton', [
  *
  * @param {string} ng-model Assignable angular expression to data-bind to.
  * @param {boolean=} md-no-ink Use of attribute indicates flag to disable ink ripple effects.
+ * @param {string} ngModel Assignable angular expression to data-bind to.
+ * @param {string=} ngChange AngularJS expression to be executed when input changes due to user
+ *    interaction with the input element.
  *
  * @usage
  * <hljs lang="html">
@@ -56927,10 +57111,7 @@ function mdRadioGroupDirective($mdUtil, $mdConstant, $mdTheming, $timeout) {
  * the `<md-radio-button>` directive provides ink effects, ARIA support, and
  * supports use within named radio groups.
  *
- * @param {string} ngModel Assignable angular expression to data-bind to.
- * @param {string=} ngChange Angular expression to be executed when input changes due to user
- *    interaction with the input element.
- * @param {string} ngValue Angular expression which sets the value to which the expression should
+ * @param {string} ngValue AngularJS expression which sets the value to which the expression should
  *    be set when selected.
  * @param {string} value The value to which the expression should be set when selected.
  * @param {string=} name Property name of the form under which the control is published.
@@ -56944,7 +57125,7 @@ function mdRadioGroupDirective($mdUtil, $mdConstant, $mdTheming, $timeout) {
  *   Label 1
  * </md-radio-button>
  *
- * <md-radio-button ng-model="color" ng-value="specialValue" aria-label="Green">
+ * <md-radio-button ng-value="specialValue" aria-label="Green">
  *   Green
  * </md-radio-button>
  *
@@ -57058,1700 +57239,12 @@ function mdRadioButtonDirective($mdAria, $mdUtil, $mdTheming) {
 
 /**
  * @ngdoc module
- * @name material.components.select
- */
-
-/***************************************************
-
- ### TODO - POST RC1 ###
- - [ ] Abstract placement logic in $mdSelect service to $mdMenu service
-
- ***************************************************/
-
-SelectDirective.$inject = ["$mdSelect", "$mdUtil", "$mdConstant", "$mdTheming", "$mdAria", "$parse", "$sce", "$injector"];
-SelectMenuDirective.$inject = ["$parse", "$mdUtil", "$mdConstant", "$mdTheming"];
-OptionDirective.$inject = ["$mdButtonInkRipple", "$mdUtil"];
-SelectProvider.$inject = ["$$interimElementProvider"];
-var SELECT_EDGE_MARGIN = 8;
-var selectNextId = 0;
-var CHECKBOX_SELECTION_INDICATOR =
-  angular.element('<div class="md-container"><div class="md-icon"></div></div>');
-
-angular.module('material.components.select', [
-    'material.core',
-    'material.components.backdrop'
-  ])
-  .directive('mdSelect', SelectDirective)
-  .directive('mdSelectMenu', SelectMenuDirective)
-  .directive('mdOption', OptionDirective)
-  .directive('mdOptgroup', OptgroupDirective)
-  .directive('mdSelectHeader', SelectHeaderDirective)
-  .provider('$mdSelect', SelectProvider);
-
-/**
- * @ngdoc directive
- * @name mdSelect
- * @restrict E
- * @module material.components.select
- *
- * @description Displays a select box, bound to an ng-model.
- *
- * When the select is required and uses a floating label, then the label will automatically contain
- * an asterisk (`*`). This behavior can be disabled by using the `md-no-asterisk` attribute.
- *
- * By default, the select will display with an underline to match other form elements. This can be
- * disabled by applying the `md-no-underline` CSS class.
- *
- * ### Option Params
- *
- * When applied, `md-option-empty` will mark the option as "empty" allowing the option to  clear the
- * select and put it back in it's default state. You may supply this attribute on any option you
- * wish, however, it is automatically applied to an option whose `value` or `ng-value` are not
- * defined.
- *
- * **Automatically Applied**
- *
- *  - `<md-option>`
- *  - `<md-option value>`
- *  - `<md-option value="">`
- *  - `<md-option ng-value>`
- *  - `<md-option ng-value="">`
- *
- * **NOT Automatically Applied**
- *
- *  - `<md-option ng-value="1">`
- *  - `<md-option ng-value="''">`
- *  - `<md-option ng-value="undefined">`
- *  - `<md-option value="undefined">` (this evaluates to the string `"undefined"`)
- *  - <code ng-non-bindable>&lt;md-option ng-value="{{someValueThatMightBeUndefined}}"&gt;</code>
- *
- * **Note:** A value of `undefined` ***is considered a valid value*** (and does not auto-apply this
- * attribute) since you may wish this to be your "Not Available" or "None" option.
- *
- * **Note:** Using the `value` attribute (as opposed to `ng-value`) always evaluates to a string, so
- * `value="null"` will require the test `ng-if="myValue != 'null'"` rather than `ng-if="!myValue"`.
- *
- * @param {expression} ng-model The model!
- * @param {boolean=} multiple When set to true, allows for more than one option to be selected. The model is an array with the selected choices.
- * @param {expression=} md-on-close Expression to be evaluated when the select is closed.
- * @param {expression=} md-on-open Expression to be evaluated when opening the select.
- * Will hide the select options and show a spinner until the evaluated promise resolves.
- * @param {expression=} md-selected-text Expression to be evaluated that will return a string
- * to be displayed as a placeholder in the select input box when it is closed. The value
- * will be treated as *text* (not html).
- * @param {expression=} md-selected-html Expression to be evaluated that will return a string
- * to be displayed as a placeholder in the select input box when it is closed. The value
- * will be treated as *html*. The value must either be explicitly marked as trustedHtml or
- * the ngSanitize module must be loaded.
- * @param {string=} placeholder Placeholder hint text.
- * @param md-no-asterisk {boolean=} When set to true, an asterisk will not be appended to the
- * floating label. **Note:** This attribute is only evaluated once; it is not watched.
- * @param {string=} aria-label Optional label for accessibility. Only necessary if no placeholder or
- * explicit label is present.
- * @param {string=} md-container-class Class list to get applied to the `.md-select-menu-container`
- * element (for custom styling).
- *
- * @usage
- * With a placeholder (label and aria-label are added dynamically)
- * <hljs lang="html">
- *   <md-input-container>
- *     <md-select
- *       ng-model="someModel"
- *       placeholder="Select a state">
- *       <md-option ng-value="opt" ng-repeat="opt in neighborhoods2">{{ opt }}</md-option>
- *     </md-select>
- *   </md-input-container>
- * </hljs>
- *
- * With an explicit label
- * <hljs lang="html">
- *   <md-input-container>
- *     <label>State</label>
- *     <md-select
- *       ng-model="someModel">
- *       <md-option ng-value="opt" ng-repeat="opt in neighborhoods2">{{ opt }}</md-option>
- *     </md-select>
- *   </md-input-container>
- * </hljs>
- *
- * With a select-header
- *
- * When a developer needs to put more than just a text label in the
- * md-select-menu, they should use the md-select-header.
- * The user can put custom HTML inside of the header and style it to their liking.
- * One common use case of this would be a sticky search bar.
- *
- * When using the md-select-header the labels that would previously be added to the
- * OptGroupDirective are ignored.
- *
- * <hljs lang="html">
- *   <md-input-container>
- *     <md-select ng-model="someModel">
- *       <md-select-header>
- *         <span> Neighborhoods - </span>
- *       </md-select-header>
- *       <md-option ng-value="opt" ng-repeat="opt in neighborhoods2">{{ opt }}</md-option>
- *     </md-select>
- *   </md-input-container>
- * </hljs>
- *
- * ## Selects and object equality
- * When using a `md-select` to pick from a list of objects, it is important to realize how javascript handles
- * equality. Consider the following example:
- * <hljs lang="js">
- * angular.controller('MyCtrl', function($scope) {
- *   $scope.users = [
- *     { id: 1, name: 'Bob' },
- *     { id: 2, name: 'Alice' },
- *     { id: 3, name: 'Steve' }
- *   ];
- *   $scope.selectedUser = { id: 1, name: 'Bob' };
- * });
- * </hljs>
- * <hljs lang="html">
- * <div ng-controller="MyCtrl">
- *   <md-select ng-model="selectedUser">
- *     <md-option ng-value="user" ng-repeat="user in users">{{ user.name }}</md-option>
- *   </md-select>
- * </div>
- * </hljs>
- *
- * At first one might expect that the select should be populated with "Bob" as the selected user. However,
- * this is not true. To determine whether something is selected,
- * `ngModelController` is looking at whether `$scope.selectedUser == (any user in $scope.users);`;
- *
- * Javascript's `==` operator does not check for deep equality (ie. that all properties
- * on the object are the same), but instead whether the objects are *the same object in memory*.
- * In this case, we have two instances of identical objects, but they exist in memory as unique
- * entities. Because of this, the select will have no value populated for a selected user.
- *
- * To get around this, `ngModelController` provides a `track by` option that allows us to specify a different
- * expression which will be used for the equality operator. As such, we can update our `html` to
- * make use of this by specifying the `ng-model-options="{trackBy: '$value.id'}"` on the `md-select`
- * element. This converts our equality expression to be
- * `$scope.selectedUser.id == (any id in $scope.users.map(function(u) { return u.id; }));`
- * which results in Bob being selected as desired.
- *
- * Working HTML:
- * <hljs lang="html">
- * <div ng-controller="MyCtrl">
- *   <md-select ng-model="selectedUser" ng-model-options="{trackBy: '$value.id'}">
- *     <md-option ng-value="user" ng-repeat="user in users">{{ user.name }}</md-option>
- *   </md-select>
- * </div>
- * </hljs>
- */
-function SelectDirective($mdSelect, $mdUtil, $mdConstant, $mdTheming, $mdAria, $parse, $sce,
-    $injector) {
-  var keyCodes = $mdConstant.KEY_CODE;
-  var NAVIGATION_KEYS = [keyCodes.SPACE, keyCodes.ENTER, keyCodes.UP_ARROW, keyCodes.DOWN_ARROW];
-
-  return {
-    restrict: 'E',
-    require: ['^?mdInputContainer', 'mdSelect', 'ngModel', '?^form'],
-    compile: compile,
-    controller: function() {
-    } // empty placeholder controller to be initialized in link
-  };
-
-  function compile(element, attr) {
-    // add the select value that will hold our placeholder or selected option value
-    var valueEl = angular.element('<md-select-value><span></span></md-select-value>');
-    valueEl.append('<span class="md-select-icon" aria-hidden="true"></span>');
-    valueEl.addClass('md-select-value');
-    if (!valueEl[0].hasAttribute('id')) {
-      valueEl.attr('id', 'select_value_label_' + $mdUtil.nextUid());
-    }
-
-    // There's got to be an md-content inside. If there's not one, let's add it.
-    if (!element.find('md-content').length) {
-      element.append(angular.element('<md-content>').append(element.contents()));
-    }
-
-
-    // Add progress spinner for md-options-loading
-    if (attr.mdOnOpen) {
-
-      // Show progress indicator while loading async
-      // Use ng-hide for `display:none` so the indicator does not interfere with the options list
-      element
-        .find('md-content')
-        .prepend(angular.element(
-          '<div>' +
-          ' <md-progress-circular md-mode="indeterminate" ng-if="$$loadingAsyncDone === false" md-diameter="25px"></md-progress-circular>' +
-          '</div>'
-        ));
-
-      // Hide list [of item options] while loading async
-      element
-        .find('md-option')
-        .attr('ng-show', '$$loadingAsyncDone');
-    }
-
-    if (attr.name) {
-      var autofillClone = angular.element('<select class="md-visually-hidden">');
-      autofillClone.attr({
-        'name': attr.name,
-        'aria-hidden': 'true',
-        'tabindex': '-1'
-      });
-      var opts = element.find('md-option');
-      angular.forEach(opts, function(el) {
-        var newEl = angular.element('<option>' + el.innerHTML + '</option>');
-        if (el.hasAttribute('ng-value')) newEl.attr('ng-value', el.getAttribute('ng-value'));
-        else if (el.hasAttribute('value')) newEl.attr('value', el.getAttribute('value'));
-        autofillClone.append(newEl);
-      });
-
-      // Adds an extra option that will hold the selected value for the
-      // cases where the select is a part of a non-angular form. This can be done with a ng-model,
-      // however if the `md-option` is being `ng-repeat`-ed, Angular seems to insert a similar
-      // `option` node, but with a value of `? string: <value> ?` which would then get submitted.
-      // This also goes around having to prepend a dot to the name attribute.
-      autofillClone.append(
-        '<option ng-value="' + attr.ngModel + '" selected></option>'
-      );
-
-      element.parent().append(autofillClone);
-    }
-
-    var isMultiple = $mdUtil.parseAttributeBoolean(attr.multiple);
-
-    // Use everything that's left inside element.contents() as the contents of the menu
-    var multipleContent = isMultiple ? 'multiple' : '';
-    var selectTemplate = '' +
-      '<div class="md-select-menu-container" aria-hidden="true">' +
-      '<md-select-menu {0}>{1}</md-select-menu>' +
-      '</div>';
-
-    selectTemplate = $mdUtil.supplant(selectTemplate, [multipleContent, element.html()]);
-    element.empty().append(valueEl);
-    element.append(selectTemplate);
-
-    if(!attr.tabindex){
-      attr.$set('tabindex', 0);
-    }
-
-    return function postLink(scope, element, attr, ctrls) {
-      var untouched = true;
-      var isDisabled, ariaLabelBase;
-
-      var containerCtrl = ctrls[0];
-      var mdSelectCtrl = ctrls[1];
-      var ngModelCtrl = ctrls[2];
-      var formCtrl = ctrls[3];
-      // grab a reference to the select menu value label
-      var valueEl = element.find('md-select-value');
-      var isReadonly = angular.isDefined(attr.readonly);
-      var disableAsterisk = $mdUtil.parseAttributeBoolean(attr.mdNoAsterisk);
-
-      if (disableAsterisk) {
-        element.addClass('md-no-asterisk');
-      }
-
-      if (containerCtrl) {
-        var isErrorGetter = containerCtrl.isErrorGetter || function() {
-          return ngModelCtrl.$invalid && (ngModelCtrl.$touched || (formCtrl && formCtrl.$submitted));
-        };
-
-        if (containerCtrl.input) {
-          // We ignore inputs that are in the md-select-header (one
-          // case where this might be useful would be adding as searchbox)
-          if (element.find('md-select-header').find('input')[0] !== containerCtrl.input[0]) {
-            throw new Error("<md-input-container> can only have *one* child <input>, <textarea> or <select> element!");
-          }
-        }
-
-        containerCtrl.input = element;
-        if (!containerCtrl.label) {
-          $mdAria.expect(element, 'aria-label', element.attr('placeholder'));
-        }
-
-        scope.$watch(isErrorGetter, containerCtrl.setInvalid);
-      }
-
-      var selectContainer, selectScope, selectMenuCtrl;
-
-      findSelectContainer();
-      $mdTheming(element);
-
-      if (formCtrl && angular.isDefined(attr.multiple)) {
-        $mdUtil.nextTick(function() {
-          var hasModelValue = ngModelCtrl.$modelValue || ngModelCtrl.$viewValue;
-          if (hasModelValue) {
-            formCtrl.$setPristine();
-          }
-        });
-      }
-
-      var originalRender = ngModelCtrl.$render;
-      ngModelCtrl.$render = function() {
-        originalRender();
-        syncLabelText();
-        syncAriaLabel();
-        inputCheckValue();
-      };
-
-      attr.$observe('placeholder', ngModelCtrl.$render);
-
-      if (containerCtrl && containerCtrl.label) {
-        attr.$observe('required', function (value) {
-          // Toggle the md-required class on the input containers label, because the input container is automatically
-          // applying the asterisk indicator on the label.
-          containerCtrl.label.toggleClass('md-required', value && !disableAsterisk);
-        });
-      }
-
-      mdSelectCtrl.setLabelText = function(text) {
-        mdSelectCtrl.setIsPlaceholder(!text);
-
-        // Whether the select label has been given via user content rather than the internal
-        // template of <md-option>
-        var isSelectLabelFromUser = false;
-
-        if (attr.mdSelectedText && attr.mdSelectedHtml) {
-          throw Error('md-select cannot have both `md-selected-text` and `md-selected-html`');
-        }
-
-        if (attr.mdSelectedText || attr.mdSelectedHtml) {
-          text = $parse(attr.mdSelectedText || attr.mdSelectedHtml)(scope);
-          isSelectLabelFromUser = true;
-        } else if (!text) {
-          // Use placeholder attribute, otherwise fallback to the md-input-container label
-          var tmpPlaceholder = attr.placeholder ||
-              (containerCtrl && containerCtrl.label ? containerCtrl.label.text() : '');
-
-          text = tmpPlaceholder || '';
-          isSelectLabelFromUser = true;
-        }
-
-        var target = valueEl.children().eq(0);
-
-        if (attr.mdSelectedHtml) {
-            // Using getTrustedHtml will run the content through $sanitize if it is not already
-            // explicitly trusted. If the ngSanitize module is not loaded, this will
-            // *correctly* throw an sce error.
-            target.html($sce.getTrustedHtml(text));
-        } else if (isSelectLabelFromUser) {
-          target.text(text);
-        } else {
-          // If we've reached this point, the text is not user-provided.
-          target.html(text);
-        }
-      };
-
-      mdSelectCtrl.setIsPlaceholder = function(isPlaceholder) {
-        if (isPlaceholder) {
-          valueEl.addClass('md-select-placeholder');
-          if (containerCtrl && containerCtrl.label) {
-            containerCtrl.label.addClass('md-placeholder');
-          }
-        } else {
-          valueEl.removeClass('md-select-placeholder');
-          if (containerCtrl && containerCtrl.label) {
-            containerCtrl.label.removeClass('md-placeholder');
-          }
-        }
-      };
-
-      if (!isReadonly) {
-        element
-          .on('focus', function(ev) {
-            // Always focus the container (if we have one) so floating labels and other styles are
-            // applied properly
-            containerCtrl && containerCtrl.setFocused(true);
-          });
-
-        // Attach before ngModel's blur listener to stop propagation of blur event
-        // to prevent from setting $touched.
-        element.on('blur', function(event) {
-          if (untouched) {
-            untouched = false;
-            if (selectScope._mdSelectIsOpen) {
-              event.stopImmediatePropagation();
-            }
-          }
-
-          if (selectScope._mdSelectIsOpen) return;
-          containerCtrl && containerCtrl.setFocused(false);
-          inputCheckValue();
-        });
-      }
-
-      mdSelectCtrl.triggerClose = function() {
-        $parse(attr.mdOnClose)(scope);
-      };
-
-      scope.$$postDigest(function() {
-        initAriaLabel();
-        syncLabelText();
-        syncAriaLabel();
-      });
-
-      function initAriaLabel() {
-        var labelText = element.attr('aria-label') || element.attr('placeholder');
-        if (!labelText && containerCtrl && containerCtrl.label) {
-          labelText = containerCtrl.label.text();
-        }
-        ariaLabelBase = labelText;
-        $mdAria.expect(element, 'aria-label', labelText);
-      }
-
-      scope.$watch(function() {
-        return selectMenuCtrl.selectedLabels();
-      }, syncLabelText);
-
-      function syncLabelText() {
-        if (selectContainer) {
-          selectMenuCtrl = selectMenuCtrl || selectContainer.find('md-select-menu').controller('mdSelectMenu');
-          mdSelectCtrl.setLabelText(selectMenuCtrl.selectedLabels());
-        }
-      }
-
-      function syncAriaLabel() {
-        if (!ariaLabelBase) return;
-        var ariaLabels = selectMenuCtrl.selectedLabels({mode: 'aria'});
-        element.attr('aria-label', ariaLabels.length ? ariaLabelBase + ': ' + ariaLabels : ariaLabelBase);
-      }
-
-      var deregisterWatcher;
-      attr.$observe('ngMultiple', function(val) {
-        if (deregisterWatcher) deregisterWatcher();
-        var parser = $parse(val);
-        deregisterWatcher = scope.$watch(function() {
-          return parser(scope);
-        }, function(multiple, prevVal) {
-          if (multiple === undefined && prevVal === undefined) return; // assume compiler did a good job
-          if (multiple) {
-            element.attr('multiple', 'multiple');
-          } else {
-            element.removeAttr('multiple');
-          }
-          element.attr('aria-multiselectable', multiple ? 'true' : 'false');
-          if (selectContainer) {
-            selectMenuCtrl.setMultiple(multiple);
-            originalRender = ngModelCtrl.$render;
-            ngModelCtrl.$render = function() {
-              originalRender();
-              syncLabelText();
-              syncAriaLabel();
-              inputCheckValue();
-            };
-            ngModelCtrl.$render();
-          }
-        });
-      });
-
-      attr.$observe('disabled', function(disabled) {
-        if (angular.isString(disabled)) {
-          disabled = true;
-        }
-        // Prevent click event being registered twice
-        if (isDisabled !== undefined && isDisabled === disabled) {
-          return;
-        }
-        isDisabled = disabled;
-        if (disabled) {
-          element
-            .attr({'aria-disabled': 'true'})
-            .removeAttr('tabindex')
-            .off('click', openSelect)
-            .off('keydown', handleKeypress);
-        } else {
-          element
-            .attr({'tabindex': attr.tabindex, 'aria-disabled': 'false'})
-            .on('click', openSelect)
-            .on('keydown', handleKeypress);
-        }
-      });
-
-      if (!attr.hasOwnProperty('disabled') && !attr.hasOwnProperty('ngDisabled')) {
-        element.attr({'aria-disabled': 'false'});
-        element.on('click', openSelect);
-        element.on('keydown', handleKeypress);
-      }
-
-      var ariaAttrs = {
-        role: 'listbox',
-        'aria-expanded': 'false',
-        'aria-multiselectable': isMultiple && !attr.ngMultiple ? 'true' : 'false'
-      };
-
-      if (!element[0].hasAttribute('id')) {
-        ariaAttrs.id = 'select_' + $mdUtil.nextUid();
-      }
-
-      var containerId = 'select_container_' + $mdUtil.nextUid();
-      selectContainer.attr('id', containerId);
-      ariaAttrs['aria-owns'] = containerId;
-      element.attr(ariaAttrs);
-
-      scope.$on('$destroy', function() {
-        $mdSelect
-          .destroy()
-          .finally(function() {
-            if (containerCtrl) {
-              containerCtrl.setFocused(false);
-              containerCtrl.setHasValue(false);
-              containerCtrl.input = null;
-            }
-            ngModelCtrl.$setTouched();
-          });
-      });
-
-
-
-      function inputCheckValue() {
-        // The select counts as having a value if one or more options are selected,
-        // or if the input's validity state says it has bad input (eg string in a number input)
-        containerCtrl && containerCtrl.setHasValue(selectMenuCtrl.selectedLabels().length > 0 || (element[0].validity || {}).badInput);
-      }
-
-      function findSelectContainer() {
-        selectContainer = angular.element(
-          element[0].querySelector('.md-select-menu-container')
-        );
-        selectScope = scope;
-        if (attr.mdContainerClass) {
-          var value = selectContainer[0].getAttribute('class') + ' ' + attr.mdContainerClass;
-          selectContainer[0].setAttribute('class', value);
-        }
-        selectMenuCtrl = selectContainer.find('md-select-menu').controller('mdSelectMenu');
-        selectMenuCtrl.init(ngModelCtrl, attr.ngModel);
-        element.on('$destroy', function() {
-          selectContainer.remove();
-        });
-      }
-
-      function handleKeypress(e) {
-        if ($mdConstant.isNavigationKey(e)) {
-          // prevent page scrolling on interaction
-          e.preventDefault();
-          openSelect(e);
-        } else {
-          if ($mdConstant.isInputKey(e) || $mdConstant.isNumPadKey(e)) {
-            e.preventDefault();
-
-            var node = selectMenuCtrl.optNodeForKeyboardSearch(e);
-            if (!node || node.hasAttribute('disabled')) return;
-            var optionCtrl = angular.element(node).controller('mdOption');
-            if (!selectMenuCtrl.isMultiple) {
-              selectMenuCtrl.deselect(Object.keys(selectMenuCtrl.selected)[0]);
-            }
-            selectMenuCtrl.select(optionCtrl.hashKey, optionCtrl.value);
-            selectMenuCtrl.refreshViewValue();
-          }
-        }
-      }
-
-      function openSelect() {
-        selectScope._mdSelectIsOpen = true;
-        element.attr('aria-expanded', 'true');
-
-        $mdSelect.show({
-          scope: selectScope,
-          preserveScope: true,
-          skipCompile: true,
-          element: selectContainer,
-          target: element[0],
-          selectCtrl: mdSelectCtrl,
-          preserveElement: true,
-          hasBackdrop: true,
-          loadingAsync: attr.mdOnOpen ? scope.$eval(attr.mdOnOpen) || true : false
-        }).finally(function() {
-          selectScope._mdSelectIsOpen = false;
-          element.focus();
-          element.attr('aria-expanded', 'false');
-          ngModelCtrl.$setTouched();
-        });
-      }
-
-    };
-  }
-}
-
-function SelectMenuDirective($parse, $mdUtil, $mdConstant, $mdTheming) {
-  // We want the scope to be set to 'false' so an isolated scope is not created
-  // which would interfere with the md-select-header's access to the
-  // parent scope.
-  SelectMenuController.$inject = ["$scope", "$attrs", "$element"];
-  return {
-    restrict: 'E',
-    require: ['mdSelectMenu'],
-    scope: false,
-    controller: SelectMenuController,
-    link: {pre: preLink}
-  };
-
-  // We use preLink instead of postLink to ensure that the select is initialized before
-  // its child options run postLink.
-  function preLink(scope, element, attr, ctrls) {
-    var selectCtrl = ctrls[0];
-
-    element.addClass('_md');     // private md component indicator for styling
-
-    $mdTheming(element);
-    element.on('click', clickListener);
-    element.on('keypress', keyListener);
-
-    function keyListener(e) {
-      if (e.keyCode == 13 || e.keyCode == 32) {
-        clickListener(e);
-      }
-    }
-
-    function clickListener(ev) {
-      var option = $mdUtil.getClosest(ev.target, 'md-option');
-      var optionCtrl = option && angular.element(option).data('$mdOptionController');
-      if (!option || !optionCtrl) return;
-      if (option.hasAttribute('disabled')) {
-        ev.stopImmediatePropagation();
-        return false;
-      }
-
-      var optionHashKey = selectCtrl.hashGetter(optionCtrl.value);
-      var isSelected = angular.isDefined(selectCtrl.selected[optionHashKey]);
-
-      scope.$apply(function() {
-        if (selectCtrl.isMultiple) {
-          if (isSelected) {
-            selectCtrl.deselect(optionHashKey);
-          } else {
-            selectCtrl.select(optionHashKey, optionCtrl.value);
-          }
-        } else {
-          if (!isSelected) {
-            selectCtrl.deselect(Object.keys(selectCtrl.selected)[0]);
-            selectCtrl.select(optionHashKey, optionCtrl.value);
-          }
-        }
-        selectCtrl.refreshViewValue();
-      });
-    }
-  }
-
-  function SelectMenuController($scope, $attrs, $element) {
-    var self = this;
-    self.isMultiple = angular.isDefined($attrs.multiple);
-    // selected is an object with keys matching all of the selected options' hashed values
-    self.selected = {};
-    // options is an object with keys matching every option's hash value,
-    // and values matching every option's controller.
-    self.options = {};
-
-    $scope.$watchCollection(function() {
-      return self.options;
-    }, function() {
-      self.ngModel.$render();
-    });
-
-    var deregisterCollectionWatch;
-    var defaultIsEmpty;
-    self.setMultiple = function(isMultiple) {
-      var ngModel = self.ngModel;
-      defaultIsEmpty = defaultIsEmpty || ngModel.$isEmpty;
-
-      self.isMultiple = isMultiple;
-      if (deregisterCollectionWatch) deregisterCollectionWatch();
-
-      if (self.isMultiple) {
-        ngModel.$validators['md-multiple'] = validateArray;
-        ngModel.$render = renderMultiple;
-
-        // watchCollection on the model because by default ngModel only watches the model's
-        // reference. This allowed the developer to also push and pop from their array.
-        $scope.$watchCollection(self.modelBinding, function(value) {
-          if (validateArray(value)) renderMultiple(value);
-          self.ngModel.$setPristine();
-        });
-
-        ngModel.$isEmpty = function(value) {
-          return !value || value.length === 0;
-        };
-      } else {
-        delete ngModel.$validators['md-multiple'];
-        ngModel.$render = renderSingular;
-      }
-
-      function validateArray(modelValue, viewValue) {
-        // If a value is truthy but not an array, reject it.
-        // If value is undefined/falsy, accept that it's an empty array.
-        return angular.isArray(modelValue || viewValue || []);
-      }
-    };
-
-    var searchStr = '';
-    var clearSearchTimeout, optNodes, optText;
-    var CLEAR_SEARCH_AFTER = 300;
-
-    self.optNodeForKeyboardSearch = function(e) {
-      clearSearchTimeout && clearTimeout(clearSearchTimeout);
-      clearSearchTimeout = setTimeout(function() {
-        clearSearchTimeout = undefined;
-        searchStr = '';
-        optText = undefined;
-        optNodes = undefined;
-      }, CLEAR_SEARCH_AFTER);
-
-      // Support 1-9 on numpad
-      var keyCode = e.keyCode - ($mdConstant.isNumPadKey(e) ? 48 : 0);
-
-      searchStr += String.fromCharCode(keyCode);
-      var search = new RegExp('^' + searchStr, 'i');
-      if (!optNodes) {
-        optNodes = $element.find('md-option');
-        optText = new Array(optNodes.length);
-        angular.forEach(optNodes, function(el, i) {
-          optText[i] = el.textContent.trim();
-        });
-      }
-      for (var i = 0; i < optText.length; ++i) {
-        if (search.test(optText[i])) {
-          return optNodes[i];
-        }
-      }
-    };
-
-    self.init = function(ngModel, binding) {
-      self.ngModel = ngModel;
-      self.modelBinding = binding;
-
-      // Setup a more robust version of isEmpty to ensure value is a valid option
-      self.ngModel.$isEmpty = function($viewValue) {
-        // We have to transform the viewValue into the hashKey, because otherwise the
-        // OptionCtrl may not exist. Developers may have specified a trackBy function.
-        return !self.options[self.hashGetter($viewValue)];
-      };
-
-      // Allow users to provide `ng-model="foo" ng-model-options="{trackBy: 'foo.id'}"` so
-      // that we can properly compare objects set on the model to the available options
-      var trackByOption = $mdUtil.getModelOption(ngModel, 'trackBy');
-
-      if (trackByOption) {
-        var trackByLocals = {};
-        var trackByParsed = $parse(trackByOption);
-        self.hashGetter = function(value, valueScope) {
-          trackByLocals.$value = value;
-          return trackByParsed(valueScope || $scope, trackByLocals);
-        };
-        // If the user doesn't provide a trackBy, we automatically generate an id for every
-        // value passed in
-      } else {
-        self.hashGetter = function getHashValue(value) {
-          if (angular.isObject(value)) {
-            return 'object_' + (value.$$mdSelectId || (value.$$mdSelectId = ++selectNextId));
-          }
-          return value;
-        };
-      }
-      self.setMultiple(self.isMultiple);
-    };
-
-    self.selectedLabels = function(opts) {
-      opts = opts || {};
-      var mode = opts.mode || 'html';
-      var selectedOptionEls = $mdUtil.nodesToArray($element[0].querySelectorAll('md-option[selected]'));
-      if (selectedOptionEls.length) {
-        var mapFn;
-
-        if (mode == 'html') {
-          // Map the given element to its innerHTML string. If the element has a child ripple
-          // container remove it from the HTML string, before returning the string.
-          mapFn = function(el) {
-            // If we do not have a `value` or `ng-value`, assume it is an empty option which clears the select
-            if (el.hasAttribute('md-option-empty')) {
-              return '';
-            }
-
-            var html = el.innerHTML;
-
-            // Remove the ripple container from the selected option, copying it would cause a CSP violation.
-            var rippleContainer = el.querySelector('.md-ripple-container');
-            if (rippleContainer) {
-              html = html.replace(rippleContainer.outerHTML, '');
-            }
-
-            // Remove the checkbox container, because it will cause the label to wrap inside of the placeholder.
-            // It should be not displayed inside of the label element.
-            var checkboxContainer = el.querySelector('.md-container');
-            if (checkboxContainer) {
-              html = html.replace(checkboxContainer.outerHTML, '');
-            }
-
-            return html;
-          };
-        } else if (mode == 'aria') {
-          mapFn = function(el) { return el.hasAttribute('aria-label') ? el.getAttribute('aria-label') : el.textContent; };
-        }
-
-        // Ensure there are no duplicates; see https://github.com/angular/material/issues/9442
-        return $mdUtil.uniq(selectedOptionEls.map(mapFn)).join(', ');
-      } else {
-        return '';
-      }
-    };
-
-    self.select = function(hashKey, hashedValue) {
-      var option = self.options[hashKey];
-      option && option.setSelected(true);
-      self.selected[hashKey] = hashedValue;
-    };
-    self.deselect = function(hashKey) {
-      var option = self.options[hashKey];
-      option && option.setSelected(false);
-      delete self.selected[hashKey];
-    };
-
-    self.addOption = function(hashKey, optionCtrl) {
-      if (angular.isDefined(self.options[hashKey])) {
-        throw new Error('Duplicate md-option values are not allowed in a select. ' +
-          'Duplicate value "' + optionCtrl.value + '" found.');
-      }
-
-      self.options[hashKey] = optionCtrl;
-
-      // If this option's value was already in our ngModel, go ahead and select it.
-      if (angular.isDefined(self.selected[hashKey])) {
-        self.select(hashKey, optionCtrl.value);
-
-        // When the current $modelValue of the ngModel Controller is using the same hash as
-        // the current option, which will be added, then we can be sure, that the validation
-        // of the option has occurred before the option was added properly.
-        // This means, that we have to manually trigger a new validation of the current option.
-        if (angular.isDefined(self.ngModel.$modelValue) && self.hashGetter(self.ngModel.$modelValue) === hashKey) {
-          self.ngModel.$validate();
-        }
-
-        self.refreshViewValue();
-      }
-    };
-    self.removeOption = function(hashKey) {
-      delete self.options[hashKey];
-      // Don't deselect an option when it's removed - the user's ngModel should be allowed
-      // to have values that do not match a currently available option.
-    };
-
-    self.refreshViewValue = function() {
-      var values = [];
-      var option;
-      for (var hashKey in self.selected) {
-        // If this hashKey has an associated option, push that option's value to the model.
-        if ((option = self.options[hashKey])) {
-          values.push(option.value);
-        } else {
-          // Otherwise, the given hashKey has no associated option, and we got it
-          // from an ngModel value at an earlier time. Push the unhashed value of
-          // this hashKey to the model.
-          // This allows the developer to put a value in the model that doesn't yet have
-          // an associated option.
-          values.push(self.selected[hashKey]);
-        }
-      }
-      var usingTrackBy = $mdUtil.getModelOption(self.ngModel, 'trackBy');
-
-      var newVal = self.isMultiple ? values : values[0];
-      var prevVal = self.ngModel.$modelValue;
-
-      if (usingTrackBy ? !angular.equals(prevVal, newVal) : (prevVal + '') !== newVal) {
-        self.ngModel.$setViewValue(newVal);
-        self.ngModel.$render();
-      }
-    };
-
-    function renderMultiple() {
-      var newSelectedValues = self.ngModel.$modelValue || self.ngModel.$viewValue || [];
-      if (!angular.isArray(newSelectedValues)) return;
-
-      var oldSelected = Object.keys(self.selected);
-
-      var newSelectedHashes = newSelectedValues.map(self.hashGetter);
-      var deselected = oldSelected.filter(function(hash) {
-        return newSelectedHashes.indexOf(hash) === -1;
-      });
-
-      deselected.forEach(self.deselect);
-      newSelectedHashes.forEach(function(hashKey, i) {
-        self.select(hashKey, newSelectedValues[i]);
-      });
-    }
-
-    function renderSingular() {
-      var value = self.ngModel.$viewValue || self.ngModel.$modelValue;
-      Object.keys(self.selected).forEach(self.deselect);
-      self.select(self.hashGetter(value), value);
-    }
-  }
-
-}
-
-function OptionDirective($mdButtonInkRipple, $mdUtil) {
-
-  OptionController.$inject = ["$element"];
-  return {
-    restrict: 'E',
-    require: ['mdOption', '^^mdSelectMenu'],
-    controller: OptionController,
-    compile: compile
-  };
-
-  function compile(element, attr) {
-    // Manual transclusion to avoid the extra inner <span> that ng-transclude generates
-    element.append(angular.element('<div class="md-text">').append(element.contents()));
-
-    element.attr('tabindex', attr.tabindex || '0');
-
-    if (!hasDefinedValue(attr)) {
-      element.attr('md-option-empty', '');
-    }
-
-    return postLink;
-  }
-
-  function hasDefinedValue(attr) {
-    var value = attr.value;
-    var ngValue = attr.ngValue;
-
-    return value || ngValue;
-  }
-
-  function postLink(scope, element, attr, ctrls) {
-    var optionCtrl = ctrls[0];
-    var selectCtrl = ctrls[1];
-
-    if (selectCtrl.isMultiple) {
-      element.addClass('md-checkbox-enabled');
-      element.prepend(CHECKBOX_SELECTION_INDICATOR.clone());
-    }
-
-    if (angular.isDefined(attr.ngValue)) {
-      scope.$watch(attr.ngValue, setOptionValue);
-    } else if (angular.isDefined(attr.value)) {
-      setOptionValue(attr.value);
-    } else {
-      scope.$watch(function() {
-        return element.text().trim();
-      }, setOptionValue);
-    }
-
-    attr.$observe('disabled', function(disabled) {
-      if (disabled) {
-        element.attr('tabindex', '-1');
-      } else {
-        element.attr('tabindex', '0');
-      }
-    });
-
-    scope.$$postDigest(function() {
-      attr.$observe('selected', function(selected) {
-        if (!angular.isDefined(selected)) return;
-        if (typeof selected == 'string') selected = true;
-        if (selected) {
-          if (!selectCtrl.isMultiple) {
-            selectCtrl.deselect(Object.keys(selectCtrl.selected)[0]);
-          }
-          selectCtrl.select(optionCtrl.hashKey, optionCtrl.value);
-        } else {
-          selectCtrl.deselect(optionCtrl.hashKey);
-        }
-        selectCtrl.refreshViewValue();
-      });
-    });
-
-    $mdButtonInkRipple.attach(scope, element);
-    configureAria();
-
-    function setOptionValue(newValue, oldValue, prevAttempt) {
-      if (!selectCtrl.hashGetter) {
-        if (!prevAttempt) {
-          scope.$$postDigest(function() {
-            setOptionValue(newValue, oldValue, true);
-          });
-        }
-        return;
-      }
-      var oldHashKey = selectCtrl.hashGetter(oldValue, scope);
-      var newHashKey = selectCtrl.hashGetter(newValue, scope);
-
-      optionCtrl.hashKey = newHashKey;
-      optionCtrl.value = newValue;
-
-      selectCtrl.removeOption(oldHashKey, optionCtrl);
-      selectCtrl.addOption(newHashKey, optionCtrl);
-    }
-
-    scope.$on('$destroy', function() {
-      selectCtrl.removeOption(optionCtrl.hashKey, optionCtrl);
-    });
-
-    function configureAria() {
-      var ariaAttrs = {
-        'role': 'option',
-        'aria-selected': 'false'
-      };
-
-      if (!element[0].hasAttribute('id')) {
-        ariaAttrs.id = 'select_option_' + $mdUtil.nextUid();
-      }
-      element.attr(ariaAttrs);
-    }
-  }
-
-  function OptionController($element) {
-    this.selected = false;
-    this.setSelected = function(isSelected) {
-      if (isSelected && !this.selected) {
-        $element.attr({
-          'selected': 'selected',
-          'aria-selected': 'true'
-        });
-      } else if (!isSelected && this.selected) {
-        $element.removeAttr('selected');
-        $element.attr('aria-selected', 'false');
-      }
-      this.selected = isSelected;
-    };
-  }
-
-}
-
-function OptgroupDirective() {
-  return {
-    restrict: 'E',
-    compile: compile
-  };
-  function compile(el, attrs) {
-    // If we have a select header element, we don't want to add the normal label
-    // header.
-    if (!hasSelectHeader()) {
-      setupLabelElement();
-    }
-
-    function hasSelectHeader() {
-      return el.parent().find('md-select-header').length;
-    }
-
-    function setupLabelElement() {
-      var labelElement = el.find('label');
-      if (!labelElement.length) {
-        labelElement = angular.element('<label>');
-        el.prepend(labelElement);
-      }
-      labelElement.addClass('md-container-ignore');
-      if (attrs.label) labelElement.text(attrs.label);
-    }
-  }
-}
-
-function SelectHeaderDirective() {
-  return {
-    restrict: 'E',
-  };
-}
-
-function SelectProvider($$interimElementProvider) {
-  selectDefaultOptions.$inject = ["$mdSelect", "$mdConstant", "$mdUtil", "$window", "$q", "$$rAF", "$animateCss", "$animate", "$document"];
-  return $$interimElementProvider('$mdSelect')
-    .setDefaults({
-      methods: ['target'],
-      options: selectDefaultOptions
-    });
-
-  /* @ngInject */
-  function selectDefaultOptions($mdSelect, $mdConstant, $mdUtil, $window, $q, $$rAF, $animateCss, $animate, $document) {
-    var ERROR_TARGET_EXPECTED = "$mdSelect.show() expected a target element in options.target but got '{0}'!";
-    var animator = $mdUtil.dom.animator;
-    var keyCodes = $mdConstant.KEY_CODE;
-
-    return {
-      parent: 'body',
-      themable: true,
-      onShow: onShow,
-      onRemove: onRemove,
-      hasBackdrop: true,
-      disableParentScroll: true
-    };
-
-    /**
-     * Interim-element onRemove logic....
-     */
-    function onRemove(scope, element, opts) {
-      opts = opts || { };
-      opts.cleanupInteraction();
-      opts.cleanupResizing();
-      opts.hideBackdrop();
-
-      // For navigation $destroy events, do a quick, non-animated removal,
-      // but for normal closes (from clicks, etc) animate the removal
-
-      return  (opts.$destroy === true) ? cleanElement() : animateRemoval().then( cleanElement );
-
-      /**
-       * For normal closes (eg clicks), animate the removal.
-       * For forced closes (like $destroy events from navigation),
-       * skip the animations
-       */
-      function animateRemoval() {
-        return $animateCss(element, {addClass: 'md-leave'}).start();
-      }
-
-      /**
-       * Restore the element to a closed state
-       */
-      function cleanElement() {
-
-        element.removeClass('md-active');
-        element.attr('aria-hidden', 'true');
-        element[0].style.display = 'none';
-
-        announceClosed(opts);
-
-        if (!opts.$destroy && opts.restoreFocus) {
-          opts.target.focus();
-        }
-      }
-
-    }
-
-    /**
-     * Interim-element onShow logic....
-     */
-    function onShow(scope, element, opts) {
-
-      watchAsyncLoad();
-      sanitizeAndConfigure(scope, opts);
-
-      opts.hideBackdrop = showBackdrop(scope, element, opts);
-
-      return showDropDown(scope, element, opts)
-        .then(function(response) {
-          element.attr('aria-hidden', 'false');
-          opts.alreadyOpen = true;
-          opts.cleanupInteraction = activateInteraction();
-          opts.cleanupResizing = activateResizing();
-
-          return response;
-        }, opts.hideBackdrop);
-
-      // ************************************
-      // Closure Functions
-      // ************************************
-
-      /**
-       *  Attach the select DOM element(s) and animate to the correct positions
-       *  and scalings...
-       */
-      function showDropDown(scope, element, opts) {
-        opts.parent.append(element);
-
-        return $q(function(resolve, reject) {
-
-          try {
-
-            $animateCss(element, {removeClass: 'md-leave', duration: 0})
-              .start()
-              .then(positionAndFocusMenu)
-              .then(resolve);
-
-          } catch (e) {
-            reject(e);
-          }
-
-        });
-      }
-
-      /**
-       * Initialize container and dropDown menu positions/scale, then animate
-       * to show... and autoFocus.
-       */
-      function positionAndFocusMenu() {
-        return $q(function(resolve) {
-          if (opts.isRemoved) return $q.reject(false);
-
-          var info = calculateMenuPositions(scope, element, opts);
-
-          info.container.element.css(animator.toCss(info.container.styles));
-          info.dropDown.element.css(animator.toCss(info.dropDown.styles));
-
-          $$rAF(function() {
-            element.addClass('md-active');
-            info.dropDown.element.css(animator.toCss({transform: ''}));
-
-            autoFocus(opts.focusedNode);
-            resolve();
-          });
-
-        });
-      }
-
-      /**
-       * Show modal backdrop element...
-       */
-      function showBackdrop(scope, element, options) {
-
-        // If we are not within a dialog...
-        if (options.disableParentScroll && !$mdUtil.getClosest(options.target, 'MD-DIALOG')) {
-          // !! DO this before creating the backdrop; since disableScrollAround()
-          //    configures the scroll offset; which is used by mdBackDrop postLink()
-          options.restoreScroll = $mdUtil.disableScrollAround(options.element, options.parent);
-        } else {
-          options.disableParentScroll = false;
-        }
-
-        if (options.hasBackdrop) {
-          // Override duration to immediately show invisible backdrop
-          options.backdrop = $mdUtil.createBackdrop(scope, "md-select-backdrop md-click-catcher");
-          $animate.enter(options.backdrop, $document[0].body, null, {duration: 0});
-        }
-
-        /**
-         * Hide modal backdrop element...
-         */
-        return function hideBackdrop() {
-          if (options.backdrop) options.backdrop.remove();
-          if (options.disableParentScroll) options.restoreScroll();
-
-          delete options.restoreScroll;
-        };
-      }
-
-      /**
-       *
-       */
-      function autoFocus(focusedNode) {
-        if (focusedNode && !focusedNode.hasAttribute('disabled')) {
-          focusedNode.focus();
-        }
-      }
-
-      /**
-       * Check for valid opts and set some sane defaults
-       */
-      function sanitizeAndConfigure(scope, options) {
-        var selectEl = element.find('md-select-menu');
-
-        if (!options.target) {
-          throw new Error($mdUtil.supplant(ERROR_TARGET_EXPECTED, [options.target]));
-        }
-
-        angular.extend(options, {
-          isRemoved: false,
-          target: angular.element(options.target), //make sure it's not a naked dom node
-          parent: angular.element(options.parent),
-          selectEl: selectEl,
-          contentEl: element.find('md-content'),
-          optionNodes: selectEl[0].getElementsByTagName('md-option')
-        });
-      }
-
-      /**
-       * Configure various resize listeners for screen changes
-       */
-      function activateResizing() {
-        var debouncedOnResize = (function(scope, target, options) {
-
-          return function() {
-            if (options.isRemoved) return;
-
-            var updates = calculateMenuPositions(scope, target, options);
-            var container = updates.container;
-            var dropDown = updates.dropDown;
-
-            container.element.css(animator.toCss(container.styles));
-            dropDown.element.css(animator.toCss(dropDown.styles));
-          };
-
-        })(scope, element, opts);
-
-        var window = angular.element($window);
-        window.on('resize', debouncedOnResize);
-        window.on('orientationchange', debouncedOnResize);
-
-        // Publish deactivation closure...
-        return function deactivateResizing() {
-
-          // Disable resizing handlers
-          window.off('resize', debouncedOnResize);
-          window.off('orientationchange', debouncedOnResize);
-        };
-      }
-
-      /**
-       *  If asynchronously loading, watch and update internal
-       *  '$$loadingAsyncDone' flag
-       */
-      function watchAsyncLoad() {
-        if (opts.loadingAsync && !opts.isRemoved) {
-          scope.$$loadingAsyncDone = false;
-
-          $q.when(opts.loadingAsync)
-            .then(function() {
-              scope.$$loadingAsyncDone = true;
-              delete opts.loadingAsync;
-            }).then(function() {
-              $$rAF(positionAndFocusMenu);
-            });
-        }
-      }
-
-      /**
-       *
-       */
-      function activateInteraction() {
-        if (opts.isRemoved) return;
-
-        var dropDown = opts.selectEl;
-        var selectCtrl = dropDown.controller('mdSelectMenu') || {};
-
-        element.addClass('md-clickable');
-
-        // Close on backdrop click
-        opts.backdrop && opts.backdrop.on('click', onBackdropClick);
-
-        // Escape to close
-        // Cycling of options, and closing on enter
-        dropDown.on('keydown', onMenuKeyDown);
-        dropDown.on('click', checkCloseMenu);
-
-        return function cleanupInteraction() {
-          opts.backdrop && opts.backdrop.off('click', onBackdropClick);
-          dropDown.off('keydown', onMenuKeyDown);
-          dropDown.off('click', checkCloseMenu);
-
-          element.removeClass('md-clickable');
-          opts.isRemoved = true;
-        };
-
-        // ************************************
-        // Closure Functions
-        // ************************************
-
-        function onBackdropClick(e) {
-          e.preventDefault();
-          e.stopPropagation();
-          opts.restoreFocus = false;
-          $mdUtil.nextTick($mdSelect.hide, true);
-        }
-
-        function onMenuKeyDown(ev) {
-          ev.preventDefault();
-          ev.stopPropagation();
-
-          switch (ev.keyCode) {
-            case keyCodes.UP_ARROW:
-              return focusPrevOption();
-            case keyCodes.DOWN_ARROW:
-              return focusNextOption();
-            case keyCodes.SPACE:
-            case keyCodes.ENTER:
-              var option = $mdUtil.getClosest(ev.target, 'md-option');
-              if (option) {
-                dropDown.triggerHandler({
-                  type: 'click',
-                  target: option
-                });
-                ev.preventDefault();
-              }
-              checkCloseMenu(ev);
-              break;
-            case keyCodes.TAB:
-            case keyCodes.ESCAPE:
-              ev.stopPropagation();
-              ev.preventDefault();
-              opts.restoreFocus = true;
-              $mdUtil.nextTick($mdSelect.hide, true);
-              break;
-            default:
-              if ($mdConstant.isInputKey(ev) || $mdConstant.isNumPadKey(ev)) {
-                var optNode = dropDown.controller('mdSelectMenu').optNodeForKeyboardSearch(ev);
-                opts.focusedNode = optNode || opts.focusedNode;
-                optNode && optNode.focus();
-              }
-          }
-        }
-
-        function focusOption(direction) {
-          var optionsArray = $mdUtil.nodesToArray(opts.optionNodes);
-          var index = optionsArray.indexOf(opts.focusedNode);
-
-          var newOption;
-
-          do {
-            if (index === -1) {
-              // We lost the previously focused element, reset to first option
-              index = 0;
-            } else if (direction === 'next' && index < optionsArray.length - 1) {
-              index++;
-            } else if (direction === 'prev' && index > 0) {
-              index--;
-            }
-            newOption = optionsArray[index];
-            if (newOption.hasAttribute('disabled')) newOption = undefined;
-          } while (!newOption && index < optionsArray.length - 1 && index > 0);
-
-          newOption && newOption.focus();
-          opts.focusedNode = newOption;
-        }
-
-        function focusNextOption() {
-          focusOption('next');
-        }
-
-        function focusPrevOption() {
-          focusOption('prev');
-        }
-
-        function checkCloseMenu(ev) {
-          if (ev && ( ev.type == 'click') && (ev.currentTarget != dropDown[0])) return;
-          if ( mouseOnScrollbar() ) return;
-
-          var option = $mdUtil.getClosest(ev.target, 'md-option');
-          if (option && option.hasAttribute && !option.hasAttribute('disabled')) {
-            ev.preventDefault();
-            ev.stopPropagation();
-            if (!selectCtrl.isMultiple) {
-              opts.restoreFocus = true;
-
-              $mdUtil.nextTick(function () {
-                $mdSelect.hide(selectCtrl.ngModel.$viewValue);
-              }, true);
-            }
-          }
-          /**
-           * check if the mouseup event was on a scrollbar
-           */
-          function mouseOnScrollbar() {
-            var clickOnScrollbar = false;
-            if (ev && (ev.currentTarget.children.length > 0)) {
-              var child = ev.currentTarget.children[0];
-              var hasScrollbar = child.scrollHeight > child.clientHeight;
-              if (hasScrollbar && child.children.length > 0) {
-                var relPosX = ev.pageX - ev.currentTarget.getBoundingClientRect().left;
-                if (relPosX > child.querySelector('md-option').offsetWidth)
-                  clickOnScrollbar = true;
-              }
-            }
-            return clickOnScrollbar;
-          }
-        }
-      }
-
-    }
-
-    /**
-     * To notify listeners that the Select menu has closed,
-     * trigger the [optional] user-defined expression
-     */
-    function announceClosed(opts) {
-      var mdSelect = opts.selectCtrl;
-      if (mdSelect) {
-        var menuController = opts.selectEl.controller('mdSelectMenu');
-        mdSelect.setLabelText(menuController ? menuController.selectedLabels() : '');
-        mdSelect.triggerClose();
-      }
-    }
-
-
-    /**
-     * Calculate the
-     */
-    function calculateMenuPositions(scope, element, opts) {
-      var
-        containerNode = element[0],
-        targetNode = opts.target[0].children[0], // target the label
-        parentNode = $document[0].body,
-        selectNode = opts.selectEl[0],
-        contentNode = opts.contentEl[0],
-        parentRect = parentNode.getBoundingClientRect(),
-        targetRect = targetNode.getBoundingClientRect(),
-        shouldOpenAroundTarget = false,
-        bounds = {
-          left: parentRect.left + SELECT_EDGE_MARGIN,
-          top: SELECT_EDGE_MARGIN,
-          bottom: parentRect.height - SELECT_EDGE_MARGIN,
-          right: parentRect.width - SELECT_EDGE_MARGIN - ($mdUtil.floatingScrollbars() ? 16 : 0)
-        },
-        spaceAvailable = {
-          top: targetRect.top - bounds.top,
-          left: targetRect.left - bounds.left,
-          right: bounds.right - (targetRect.left + targetRect.width),
-          bottom: bounds.bottom - (targetRect.top + targetRect.height)
-        },
-        maxWidth = parentRect.width - SELECT_EDGE_MARGIN * 2,
-        selectedNode = selectNode.querySelector('md-option[selected]'),
-        optionNodes = selectNode.getElementsByTagName('md-option'),
-        optgroupNodes = selectNode.getElementsByTagName('md-optgroup'),
-        isScrollable = calculateScrollable(element, contentNode),
-        centeredNode;
-
-      var loading = isPromiseLike(opts.loadingAsync);
-      if (!loading) {
-        // If a selected node, center around that
-        if (selectedNode) {
-          centeredNode = selectedNode;
-          // If there are option groups, center around the first option group
-        } else if (optgroupNodes.length) {
-          centeredNode = optgroupNodes[0];
-          // Otherwise - if we are not loading async - center around the first optionNode
-        } else if (optionNodes.length) {
-          centeredNode = optionNodes[0];
-          // In case there are no options, center on whatever's in there... (eg progress indicator)
-        } else {
-          centeredNode = contentNode.firstElementChild || contentNode;
-        }
-      } else {
-        // If loading, center on progress indicator
-        centeredNode = contentNode.firstElementChild || contentNode;
-      }
-
-      if (contentNode.offsetWidth > maxWidth) {
-        contentNode.style['max-width'] = maxWidth + 'px';
-      } else {
-        contentNode.style.maxWidth = null;
-      }
-      if (shouldOpenAroundTarget) {
-        contentNode.style['min-width'] = targetRect.width + 'px';
-      }
-
-      // Remove padding before we compute the position of the menu
-      if (isScrollable) {
-        selectNode.classList.add('md-overflow');
-      }
-
-      var focusedNode = centeredNode;
-      if ((focusedNode.tagName || '').toUpperCase() === 'MD-OPTGROUP') {
-        focusedNode = optionNodes[0] || contentNode.firstElementChild || contentNode;
-        centeredNode = focusedNode;
-      }
-      // Cache for autoFocus()
-      opts.focusedNode = focusedNode;
-
-      // Get the selectMenuRect *after* max-width is possibly set above
-      containerNode.style.display = 'block';
-      var selectMenuRect = selectNode.getBoundingClientRect();
-      var centeredRect = getOffsetRect(centeredNode);
-
-      if (centeredNode) {
-        var centeredStyle = $window.getComputedStyle(centeredNode);
-        centeredRect.paddingLeft = parseInt(centeredStyle.paddingLeft, 10) || 0;
-        centeredRect.paddingRight = parseInt(centeredStyle.paddingRight, 10) || 0;
-      }
-
-      if (isScrollable) {
-        var scrollBuffer = contentNode.offsetHeight / 2;
-        contentNode.scrollTop = centeredRect.top + centeredRect.height / 2 - scrollBuffer;
-
-        if (spaceAvailable.top < scrollBuffer) {
-          contentNode.scrollTop = Math.min(
-            centeredRect.top,
-            contentNode.scrollTop + scrollBuffer - spaceAvailable.top
-          );
-        } else if (spaceAvailable.bottom < scrollBuffer) {
-          contentNode.scrollTop = Math.max(
-            centeredRect.top + centeredRect.height - selectMenuRect.height,
-            contentNode.scrollTop - scrollBuffer + spaceAvailable.bottom
-          );
-        }
-      }
-
-      var left, top, transformOrigin, minWidth, fontSize;
-      if (shouldOpenAroundTarget) {
-        left = targetRect.left;
-        top = targetRect.top + targetRect.height;
-        transformOrigin = '50% 0';
-        if (top + selectMenuRect.height > bounds.bottom) {
-          top = targetRect.top - selectMenuRect.height;
-          transformOrigin = '50% 100%';
-        }
-      } else {
-        left = (targetRect.left + centeredRect.left - centeredRect.paddingLeft) + 2;
-        top = Math.floor(targetRect.top + targetRect.height / 2 - centeredRect.height / 2 -
-            centeredRect.top + contentNode.scrollTop) + 2;
-
-        transformOrigin = (centeredRect.left + targetRect.width / 2) + 'px ' +
-          (centeredRect.top + centeredRect.height / 2 - contentNode.scrollTop) + 'px 0px';
-
-        minWidth = Math.min(targetRect.width + centeredRect.paddingLeft + centeredRect.paddingRight, maxWidth);
-
-        fontSize = window.getComputedStyle(targetNode)['font-size'];
-      }
-
-      // Keep left and top within the window
-      var containerRect = containerNode.getBoundingClientRect();
-      var scaleX = Math.round(100 * Math.min(targetRect.width / selectMenuRect.width, 1.0)) / 100;
-      var scaleY = Math.round(100 * Math.min(targetRect.height / selectMenuRect.height, 1.0)) / 100;
-
-      return {
-        container: {
-          element: angular.element(containerNode),
-          styles: {
-            left: Math.floor(clamp(bounds.left, left, bounds.right - containerRect.width)),
-            top: Math.floor(clamp(bounds.top, top, bounds.bottom - containerRect.height)),
-            'min-width': minWidth,
-            'font-size': fontSize
-          }
-        },
-        dropDown: {
-          element: angular.element(selectNode),
-          styles: {
-            transformOrigin: transformOrigin,
-            transform: !opts.alreadyOpen ? $mdUtil.supplant('scale({0},{1})', [scaleX, scaleY]) : ""
-          }
-        }
-      };
-
-    }
-
-  }
-
-  function isPromiseLike(obj) {
-    return obj && angular.isFunction(obj.then);
-  }
-
-  function clamp(min, n, max) {
-    return Math.max(min, Math.min(n, max));
-  }
-
-  function getOffsetRect(node) {
-    return node ? {
-      left: node.offsetLeft,
-      top: node.offsetTop,
-      width: node.offsetWidth,
-      height: node.offsetHeight
-    } : {left: 0, top: 0, width: 0, height: 0};
-  }
-
-  function calculateScrollable(element, contentNode) {
-    var isScrollable = false;
-
-    try {
-      var oldDisplay = element[0].style.display;
-
-      // Set the element's display to block so that this calculation is correct
-      element[0].style.display = 'block';
-
-      isScrollable = contentNode.scrollHeight > contentNode.offsetHeight;
-
-      // Reset it back afterwards
-      element[0].style.display = oldDisplay;
-    } finally {
-      // Nothing to do
-    }
-    return isScrollable;
-  }
-}
-
-})();
-(function(){
-"use strict";
-
-/**
- * @ngdoc module
  * @name material.components.showHide
  */
 
 // Add additional handlers to ng-show and ng-hide that notify directives
 // contained within that they should recompute their size.
-// These run in addition to Angular's built-in ng-hide and ng-show directives.
+// These run in addition to AngularJS's built-in ng-hide and ng-show directives.
 angular.module('material.components.showHide', [
   'material.core'
 ])
@@ -59345,6 +57838,1705 @@ function SidenavController($scope, $attrs, $mdComponentRegistry, $q, $interpolat
       }
     });
   }
+}
+
+})();
+(function(){
+"use strict";
+
+/**
+ * @ngdoc module
+ * @name material.components.select
+ */
+
+/***************************************************
+
+ ### TODO - POST RC1 ###
+ - [ ] Abstract placement logic in $mdSelect service to $mdMenu service
+
+ ***************************************************/
+
+SelectDirective.$inject = ["$mdSelect", "$mdUtil", "$mdConstant", "$mdTheming", "$mdAria", "$parse", "$sce", "$injector"];
+SelectMenuDirective.$inject = ["$parse", "$mdUtil", "$mdConstant", "$mdTheming"];
+OptionDirective.$inject = ["$mdButtonInkRipple", "$mdUtil", "$mdTheming"];
+SelectProvider.$inject = ["$$interimElementProvider"];
+var SELECT_EDGE_MARGIN = 8;
+var selectNextId = 0;
+var CHECKBOX_SELECTION_INDICATOR =
+  angular.element('<div class="md-container"><div class="md-icon"></div></div>');
+
+angular.module('material.components.select', [
+    'material.core',
+    'material.components.backdrop'
+  ])
+  .directive('mdSelect', SelectDirective)
+  .directive('mdSelectMenu', SelectMenuDirective)
+  .directive('mdOption', OptionDirective)
+  .directive('mdOptgroup', OptgroupDirective)
+  .directive('mdSelectHeader', SelectHeaderDirective)
+  .provider('$mdSelect', SelectProvider);
+
+/**
+ * @ngdoc directive
+ * @name mdSelect
+ * @restrict E
+ * @module material.components.select
+ *
+ * @description Displays a select box, bound to an ng-model.
+ *
+ * When the select is required and uses a floating label, then the label will automatically contain
+ * an asterisk (`*`). This behavior can be disabled by using the `md-no-asterisk` attribute.
+ *
+ * By default, the select will display with an underline to match other form elements. This can be
+ * disabled by applying the `md-no-underline` CSS class.
+ *
+ * ### Option Params
+ *
+ * When applied, `md-option-empty` will mark the option as "empty" allowing the option to  clear the
+ * select and put it back in it's default state. You may supply this attribute on any option you
+ * wish, however, it is automatically applied to an option whose `value` or `ng-value` are not
+ * defined.
+ *
+ * **Automatically Applied**
+ *
+ *  - `<md-option>`
+ *  - `<md-option value>`
+ *  - `<md-option value="">`
+ *  - `<md-option ng-value>`
+ *  - `<md-option ng-value="">`
+ *
+ * **NOT Automatically Applied**
+ *
+ *  - `<md-option ng-value="1">`
+ *  - `<md-option ng-value="''">`
+ *  - `<md-option ng-value="undefined">`
+ *  - `<md-option value="undefined">` (this evaluates to the string `"undefined"`)
+ *  - <code ng-non-bindable>&lt;md-option ng-value="{{someValueThatMightBeUndefined}}"&gt;</code>
+ *
+ * **Note:** A value of `undefined` ***is considered a valid value*** (and does not auto-apply this
+ * attribute) since you may wish this to be your "Not Available" or "None" option.
+ *
+ * **Note:** Using the `value` attribute (as opposed to `ng-value`) always evaluates to a string, so
+ * `value="null"` will require the test `ng-if="myValue != 'null'"` rather than `ng-if="!myValue"`.
+ *
+ * @param {expression} ng-model The model!
+ * @param {boolean=} multiple When set to true, allows for more than one option to be selected. The model is an array with the selected choices.
+ * @param {expression=} md-on-close Expression to be evaluated when the select is closed.
+ * @param {expression=} md-on-open Expression to be evaluated when opening the select.
+ * Will hide the select options and show a spinner until the evaluated promise resolves.
+ * @param {expression=} md-selected-text Expression to be evaluated that will return a string
+ * to be displayed as a placeholder in the select input box when it is closed. The value
+ * will be treated as *text* (not html).
+ * @param {expression=} md-selected-html Expression to be evaluated that will return a string
+ * to be displayed as a placeholder in the select input box when it is closed. The value
+ * will be treated as *html*. The value must either be explicitly marked as trustedHtml or
+ * the ngSanitize module must be loaded.
+ * @param {string=} placeholder Placeholder hint text.
+ * @param md-no-asterisk {boolean=} When set to true, an asterisk will not be appended to the
+ * floating label. **Note:** This attribute is only evaluated once; it is not watched.
+ * @param {string=} aria-label Optional label for accessibility. Only necessary if no placeholder or
+ * explicit label is present.
+ * @param {string=} md-container-class Class list to get applied to the `.md-select-menu-container`
+ * element (for custom styling).
+ *
+ * @usage
+ * With a placeholder (label and aria-label are added dynamically)
+ * <hljs lang="html">
+ *   <md-input-container>
+ *     <md-select
+ *       ng-model="someModel"
+ *       placeholder="Select a state">
+ *       <md-option ng-value="opt" ng-repeat="opt in neighborhoods2">{{ opt }}</md-option>
+ *     </md-select>
+ *   </md-input-container>
+ * </hljs>
+ *
+ * With an explicit label
+ * <hljs lang="html">
+ *   <md-input-container>
+ *     <label>State</label>
+ *     <md-select
+ *       ng-model="someModel">
+ *       <md-option ng-value="opt" ng-repeat="opt in neighborhoods2">{{ opt }}</md-option>
+ *     </md-select>
+ *   </md-input-container>
+ * </hljs>
+ *
+ * With a select-header
+ *
+ * When a developer needs to put more than just a text label in the
+ * md-select-menu, they should use the md-select-header.
+ * The user can put custom HTML inside of the header and style it to their liking.
+ * One common use case of this would be a sticky search bar.
+ *
+ * When using the md-select-header the labels that would previously be added to the
+ * OptGroupDirective are ignored.
+ *
+ * <hljs lang="html">
+ *   <md-input-container>
+ *     <md-select ng-model="someModel">
+ *       <md-select-header>
+ *         <span> Neighborhoods - </span>
+ *       </md-select-header>
+ *       <md-option ng-value="opt" ng-repeat="opt in neighborhoods2">{{ opt }}</md-option>
+ *     </md-select>
+ *   </md-input-container>
+ * </hljs>
+ *
+ * ## Selects and object equality
+ * When using a `md-select` to pick from a list of objects, it is important to realize how javascript handles
+ * equality. Consider the following example:
+ * <hljs lang="js">
+ * angular.controller('MyCtrl', function($scope) {
+ *   $scope.users = [
+ *     { id: 1, name: 'Bob' },
+ *     { id: 2, name: 'Alice' },
+ *     { id: 3, name: 'Steve' }
+ *   ];
+ *   $scope.selectedUser = { id: 1, name: 'Bob' };
+ * });
+ * </hljs>
+ * <hljs lang="html">
+ * <div ng-controller="MyCtrl">
+ *   <md-select ng-model="selectedUser">
+ *     <md-option ng-value="user" ng-repeat="user in users">{{ user.name }}</md-option>
+ *   </md-select>
+ * </div>
+ * </hljs>
+ *
+ * At first one might expect that the select should be populated with "Bob" as the selected user. However,
+ * this is not true. To determine whether something is selected,
+ * `ngModelController` is looking at whether `$scope.selectedUser == (any user in $scope.users);`;
+ *
+ * Javascript's `==` operator does not check for deep equality (ie. that all properties
+ * on the object are the same), but instead whether the objects are *the same object in memory*.
+ * In this case, we have two instances of identical objects, but they exist in memory as unique
+ * entities. Because of this, the select will have no value populated for a selected user.
+ *
+ * To get around this, `ngModelController` provides a `track by` option that allows us to specify a different
+ * expression which will be used for the equality operator. As such, we can update our `html` to
+ * make use of this by specifying the `ng-model-options="{trackBy: '$value.id'}"` on the `md-select`
+ * element. This converts our equality expression to be
+ * `$scope.selectedUser.id == (any id in $scope.users.map(function(u) { return u.id; }));`
+ * which results in Bob being selected as desired.
+ *
+ * Working HTML:
+ * <hljs lang="html">
+ * <div ng-controller="MyCtrl">
+ *   <md-select ng-model="selectedUser" ng-model-options="{trackBy: '$value.id'}">
+ *     <md-option ng-value="user" ng-repeat="user in users">{{ user.name }}</md-option>
+ *   </md-select>
+ * </div>
+ * </hljs>
+ */
+function SelectDirective($mdSelect, $mdUtil, $mdConstant, $mdTheming, $mdAria, $parse, $sce,
+    $injector) {
+  var keyCodes = $mdConstant.KEY_CODE;
+  var NAVIGATION_KEYS = [keyCodes.SPACE, keyCodes.ENTER, keyCodes.UP_ARROW, keyCodes.DOWN_ARROW];
+
+  return {
+    restrict: 'E',
+    require: ['^?mdInputContainer', 'mdSelect', 'ngModel', '?^form'],
+    compile: compile,
+    controller: function() {
+    } // empty placeholder controller to be initialized in link
+  };
+
+  function compile(element, attr) {
+    // add the select value that will hold our placeholder or selected option value
+    var valueEl = angular.element('<md-select-value><span></span></md-select-value>');
+    valueEl.append('<span class="md-select-icon" aria-hidden="true"></span>');
+    valueEl.addClass('md-select-value');
+    if (!valueEl[0].hasAttribute('id')) {
+      valueEl.attr('id', 'select_value_label_' + $mdUtil.nextUid());
+    }
+
+    // There's got to be an md-content inside. If there's not one, let's add it.
+    if (!element.find('md-content').length) {
+      element.append(angular.element('<md-content>').append(element.contents()));
+    }
+
+
+    // Add progress spinner for md-options-loading
+    if (attr.mdOnOpen) {
+
+      // Show progress indicator while loading async
+      // Use ng-hide for `display:none` so the indicator does not interfere with the options list
+      element
+        .find('md-content')
+        .prepend(angular.element(
+          '<div>' +
+          ' <md-progress-circular md-mode="indeterminate" ng-if="$$loadingAsyncDone === false" md-diameter="25px"></md-progress-circular>' +
+          '</div>'
+        ));
+
+      // Hide list [of item options] while loading async
+      element
+        .find('md-option')
+        .attr('ng-show', '$$loadingAsyncDone');
+    }
+
+    if (attr.name) {
+      var autofillClone = angular.element('<select class="md-visually-hidden">');
+      autofillClone.attr({
+        'name': attr.name,
+        'aria-hidden': 'true',
+        'tabindex': '-1'
+      });
+      var opts = element.find('md-option');
+      angular.forEach(opts, function(el) {
+        var newEl = angular.element('<option>' + el.innerHTML + '</option>');
+        if (el.hasAttribute('ng-value')) newEl.attr('ng-value', el.getAttribute('ng-value'));
+        else if (el.hasAttribute('value')) newEl.attr('value', el.getAttribute('value'));
+        autofillClone.append(newEl);
+      });
+
+      // Adds an extra option that will hold the selected value for the
+      // cases where the select is a part of a non-angular form. This can be done with a ng-model,
+      // however if the `md-option` is being `ng-repeat`-ed, AngularJS seems to insert a similar
+      // `option` node, but with a value of `? string: <value> ?` which would then get submitted.
+      // This also goes around having to prepend a dot to the name attribute.
+      autofillClone.append(
+        '<option ng-value="' + attr.ngModel + '" selected></option>'
+      );
+
+      element.parent().append(autofillClone);
+    }
+
+    var isMultiple = $mdUtil.parseAttributeBoolean(attr.multiple);
+
+    // Use everything that's left inside element.contents() as the contents of the menu
+    var multipleContent = isMultiple ? 'multiple' : '';
+    var selectTemplate = '' +
+      '<div class="md-select-menu-container" aria-hidden="true">' +
+      '<md-select-menu {0}>{1}</md-select-menu>' +
+      '</div>';
+
+    selectTemplate = $mdUtil.supplant(selectTemplate, [multipleContent, element.html()]);
+    element.empty().append(valueEl);
+    element.append(selectTemplate);
+
+    if(!attr.tabindex){
+      attr.$set('tabindex', 0);
+    }
+
+    return function postLink(scope, element, attr, ctrls) {
+      var untouched = true;
+      var isDisabled, ariaLabelBase;
+
+      var containerCtrl = ctrls[0];
+      var mdSelectCtrl = ctrls[1];
+      var ngModelCtrl = ctrls[2];
+      var formCtrl = ctrls[3];
+      // grab a reference to the select menu value label
+      var valueEl = element.find('md-select-value');
+      var isReadonly = angular.isDefined(attr.readonly);
+      var disableAsterisk = $mdUtil.parseAttributeBoolean(attr.mdNoAsterisk);
+
+      if (disableAsterisk) {
+        element.addClass('md-no-asterisk');
+      }
+
+      if (containerCtrl) {
+        var isErrorGetter = containerCtrl.isErrorGetter || function() {
+          return ngModelCtrl.$invalid && (ngModelCtrl.$touched || (formCtrl && formCtrl.$submitted));
+        };
+
+        if (containerCtrl.input) {
+          // We ignore inputs that are in the md-select-header (one
+          // case where this might be useful would be adding as searchbox)
+          if (element.find('md-select-header').find('input')[0] !== containerCtrl.input[0]) {
+            throw new Error("<md-input-container> can only have *one* child <input>, <textarea> or <select> element!");
+          }
+        }
+
+        containerCtrl.input = element;
+        if (!containerCtrl.label) {
+          $mdAria.expect(element, 'aria-label', element.attr('placeholder'));
+        }
+
+        scope.$watch(isErrorGetter, containerCtrl.setInvalid);
+      }
+
+      var selectContainer, selectScope, selectMenuCtrl;
+
+      findSelectContainer();
+      $mdTheming(element);
+
+      if (formCtrl && angular.isDefined(attr.multiple)) {
+        $mdUtil.nextTick(function() {
+          var hasModelValue = ngModelCtrl.$modelValue || ngModelCtrl.$viewValue;
+          if (hasModelValue) {
+            formCtrl.$setPristine();
+          }
+        });
+      }
+
+      var originalRender = ngModelCtrl.$render;
+      ngModelCtrl.$render = function() {
+        originalRender();
+        syncLabelText();
+        syncAriaLabel();
+        inputCheckValue();
+      };
+
+      attr.$observe('placeholder', ngModelCtrl.$render);
+
+      if (containerCtrl && containerCtrl.label) {
+        attr.$observe('required', function (value) {
+          // Toggle the md-required class on the input containers label, because the input container is automatically
+          // applying the asterisk indicator on the label.
+          containerCtrl.label.toggleClass('md-required', value && !disableAsterisk);
+        });
+      }
+
+      mdSelectCtrl.setLabelText = function(text) {
+        mdSelectCtrl.setIsPlaceholder(!text);
+
+        // Whether the select label has been given via user content rather than the internal
+        // template of <md-option>
+        var isSelectLabelFromUser = false;
+
+        if (attr.mdSelectedText && attr.mdSelectedHtml) {
+          throw Error('md-select cannot have both `md-selected-text` and `md-selected-html`');
+        }
+
+        if (attr.mdSelectedText || attr.mdSelectedHtml) {
+          text = $parse(attr.mdSelectedText || attr.mdSelectedHtml)(scope);
+          isSelectLabelFromUser = true;
+        } else if (!text) {
+          // Use placeholder attribute, otherwise fallback to the md-input-container label
+          var tmpPlaceholder = attr.placeholder ||
+              (containerCtrl && containerCtrl.label ? containerCtrl.label.text() : '');
+
+          text = tmpPlaceholder || '';
+          isSelectLabelFromUser = true;
+        }
+
+        var target = valueEl.children().eq(0);
+
+        if (attr.mdSelectedHtml) {
+            // Using getTrustedHtml will run the content through $sanitize if it is not already
+            // explicitly trusted. If the ngSanitize module is not loaded, this will
+            // *correctly* throw an sce error.
+            target.html($sce.getTrustedHtml(text));
+        } else if (isSelectLabelFromUser) {
+          target.text(text);
+        } else {
+          // If we've reached this point, the text is not user-provided.
+          target.html(text);
+        }
+      };
+
+      mdSelectCtrl.setIsPlaceholder = function(isPlaceholder) {
+        if (isPlaceholder) {
+          valueEl.addClass('md-select-placeholder');
+          if (containerCtrl && containerCtrl.label) {
+            containerCtrl.label.addClass('md-placeholder');
+          }
+        } else {
+          valueEl.removeClass('md-select-placeholder');
+          if (containerCtrl && containerCtrl.label) {
+            containerCtrl.label.removeClass('md-placeholder');
+          }
+        }
+      };
+
+      if (!isReadonly) {
+        element
+          .on('focus', function(ev) {
+            // Always focus the container (if we have one) so floating labels and other styles are
+            // applied properly
+            containerCtrl && containerCtrl.setFocused(true);
+          });
+
+        // Attach before ngModel's blur listener to stop propagation of blur event
+        // to prevent from setting $touched.
+        element.on('blur', function(event) {
+          if (untouched) {
+            untouched = false;
+            if (selectScope._mdSelectIsOpen) {
+              event.stopImmediatePropagation();
+            }
+          }
+
+          if (selectScope._mdSelectIsOpen) return;
+          containerCtrl && containerCtrl.setFocused(false);
+          inputCheckValue();
+        });
+      }
+
+      mdSelectCtrl.triggerClose = function() {
+        $parse(attr.mdOnClose)(scope);
+      };
+
+      scope.$$postDigest(function() {
+        initAriaLabel();
+        syncLabelText();
+        syncAriaLabel();
+      });
+
+      function initAriaLabel() {
+        var labelText = element.attr('aria-label') || element.attr('placeholder');
+        if (!labelText && containerCtrl && containerCtrl.label) {
+          labelText = containerCtrl.label.text();
+        }
+        ariaLabelBase = labelText;
+        $mdAria.expect(element, 'aria-label', labelText);
+      }
+
+      scope.$watch(function() {
+        return selectMenuCtrl.selectedLabels();
+      }, syncLabelText);
+
+      function syncLabelText() {
+        if (selectContainer) {
+          selectMenuCtrl = selectMenuCtrl || selectContainer.find('md-select-menu').controller('mdSelectMenu');
+          mdSelectCtrl.setLabelText(selectMenuCtrl.selectedLabels());
+        }
+      }
+
+      function syncAriaLabel() {
+        if (!ariaLabelBase) return;
+        var ariaLabels = selectMenuCtrl.selectedLabels({mode: 'aria'});
+        element.attr('aria-label', ariaLabels.length ? ariaLabelBase + ': ' + ariaLabels : ariaLabelBase);
+      }
+
+      var deregisterWatcher;
+      attr.$observe('ngMultiple', function(val) {
+        if (deregisterWatcher) deregisterWatcher();
+        var parser = $parse(val);
+        deregisterWatcher = scope.$watch(function() {
+          return parser(scope);
+        }, function(multiple, prevVal) {
+          if (multiple === undefined && prevVal === undefined) return; // assume compiler did a good job
+          if (multiple) {
+            element.attr('multiple', 'multiple');
+          } else {
+            element.removeAttr('multiple');
+          }
+          element.attr('aria-multiselectable', multiple ? 'true' : 'false');
+          if (selectContainer) {
+            selectMenuCtrl.setMultiple(multiple);
+            originalRender = ngModelCtrl.$render;
+            ngModelCtrl.$render = function() {
+              originalRender();
+              syncLabelText();
+              syncAriaLabel();
+              inputCheckValue();
+            };
+            ngModelCtrl.$render();
+          }
+        });
+      });
+
+      attr.$observe('disabled', function(disabled) {
+        if (angular.isString(disabled)) {
+          disabled = true;
+        }
+        // Prevent click event being registered twice
+        if (isDisabled !== undefined && isDisabled === disabled) {
+          return;
+        }
+        isDisabled = disabled;
+        if (disabled) {
+          element
+            .attr({'aria-disabled': 'true'})
+            .removeAttr('tabindex')
+            .off('click', openSelect)
+            .off('keydown', handleKeypress);
+        } else {
+          element
+            .attr({'tabindex': attr.tabindex, 'aria-disabled': 'false'})
+            .on('click', openSelect)
+            .on('keydown', handleKeypress);
+        }
+      });
+
+      if (!attr.hasOwnProperty('disabled') && !attr.hasOwnProperty('ngDisabled')) {
+        element.attr({'aria-disabled': 'false'});
+        element.on('click', openSelect);
+        element.on('keydown', handleKeypress);
+      }
+
+      var ariaAttrs = {
+        role: 'listbox',
+        'aria-expanded': 'false',
+        'aria-multiselectable': isMultiple && !attr.ngMultiple ? 'true' : 'false'
+      };
+
+      if (!element[0].hasAttribute('id')) {
+        ariaAttrs.id = 'select_' + $mdUtil.nextUid();
+      }
+
+      var containerId = 'select_container_' + $mdUtil.nextUid();
+      selectContainer.attr('id', containerId);
+      ariaAttrs['aria-owns'] = containerId;
+      element.attr(ariaAttrs);
+
+      scope.$on('$destroy', function() {
+        $mdSelect
+          .destroy()
+          .finally(function() {
+            if (containerCtrl) {
+              containerCtrl.setFocused(false);
+              containerCtrl.setHasValue(false);
+              containerCtrl.input = null;
+            }
+            ngModelCtrl.$setTouched();
+          });
+      });
+
+
+
+      function inputCheckValue() {
+        // The select counts as having a value if one or more options are selected,
+        // or if the input's validity state says it has bad input (eg string in a number input)
+        containerCtrl && containerCtrl.setHasValue(selectMenuCtrl.selectedLabels().length > 0 || (element[0].validity || {}).badInput);
+      }
+
+      function findSelectContainer() {
+        selectContainer = angular.element(
+          element[0].querySelector('.md-select-menu-container')
+        );
+        selectScope = scope;
+        if (attr.mdContainerClass) {
+          var value = selectContainer[0].getAttribute('class') + ' ' + attr.mdContainerClass;
+          selectContainer[0].setAttribute('class', value);
+        }
+        selectMenuCtrl = selectContainer.find('md-select-menu').controller('mdSelectMenu');
+        selectMenuCtrl.init(ngModelCtrl, attr.ngModel);
+        element.on('$destroy', function() {
+          selectContainer.remove();
+        });
+      }
+
+      function handleKeypress(e) {
+        if ($mdConstant.isNavigationKey(e)) {
+          // prevent page scrolling on interaction
+          e.preventDefault();
+          openSelect(e);
+        } else {
+          if (shouldHandleKey(e, $mdConstant)) {
+            e.preventDefault();
+
+            var node = selectMenuCtrl.optNodeForKeyboardSearch(e);
+            if (!node || node.hasAttribute('disabled')) return;
+            var optionCtrl = angular.element(node).controller('mdOption');
+            if (!selectMenuCtrl.isMultiple) {
+              selectMenuCtrl.deselect(Object.keys(selectMenuCtrl.selected)[0]);
+            }
+            selectMenuCtrl.select(optionCtrl.hashKey, optionCtrl.value);
+            selectMenuCtrl.refreshViewValue();
+          }
+        }
+      }
+
+      function openSelect() {
+        selectScope._mdSelectIsOpen = true;
+        element.attr('aria-expanded', 'true');
+
+        $mdSelect.show({
+          scope: selectScope,
+          preserveScope: true,
+          skipCompile: true,
+          element: selectContainer,
+          target: element[0],
+          selectCtrl: mdSelectCtrl,
+          preserveElement: true,
+          hasBackdrop: true,
+          loadingAsync: attr.mdOnOpen ? scope.$eval(attr.mdOnOpen) || true : false
+        }).finally(function() {
+          selectScope._mdSelectIsOpen = false;
+          element.focus();
+          element.attr('aria-expanded', 'false');
+          ngModelCtrl.$setTouched();
+        });
+      }
+
+    };
+  }
+}
+
+function SelectMenuDirective($parse, $mdUtil, $mdConstant, $mdTheming) {
+  // We want the scope to be set to 'false' so an isolated scope is not created
+  // which would interfere with the md-select-header's access to the
+  // parent scope.
+  SelectMenuController.$inject = ["$scope", "$attrs", "$element"];
+  return {
+    restrict: 'E',
+    require: ['mdSelectMenu'],
+    scope: false,
+    controller: SelectMenuController,
+    link: {pre: preLink}
+  };
+
+  // We use preLink instead of postLink to ensure that the select is initialized before
+  // its child options run postLink.
+  function preLink(scope, element, attr, ctrls) {
+    var selectCtrl = ctrls[0];
+
+    element.addClass('_md');     // private md component indicator for styling
+
+    $mdTheming(element);
+    element.on('click', clickListener);
+    element.on('keypress', keyListener);
+
+    function keyListener(e) {
+      if (e.keyCode == 13 || e.keyCode == 32) {
+        clickListener(e);
+      }
+    }
+
+    function clickListener(ev) {
+      var option = $mdUtil.getClosest(ev.target, 'md-option');
+      var optionCtrl = option && angular.element(option).data('$mdOptionController');
+      if (!option || !optionCtrl) return;
+      if (option.hasAttribute('disabled')) {
+        ev.stopImmediatePropagation();
+        return false;
+      }
+
+      var optionHashKey = selectCtrl.hashGetter(optionCtrl.value);
+      var isSelected = angular.isDefined(selectCtrl.selected[optionHashKey]);
+
+      scope.$apply(function() {
+        if (selectCtrl.isMultiple) {
+          if (isSelected) {
+            selectCtrl.deselect(optionHashKey);
+          } else {
+            selectCtrl.select(optionHashKey, optionCtrl.value);
+          }
+        } else {
+          if (!isSelected) {
+            selectCtrl.deselect(Object.keys(selectCtrl.selected)[0]);
+            selectCtrl.select(optionHashKey, optionCtrl.value);
+          }
+        }
+        selectCtrl.refreshViewValue();
+      });
+    }
+  }
+
+  function SelectMenuController($scope, $attrs, $element) {
+    var self = this;
+    self.isMultiple = angular.isDefined($attrs.multiple);
+    // selected is an object with keys matching all of the selected options' hashed values
+    self.selected = {};
+    // options is an object with keys matching every option's hash value,
+    // and values matching every option's controller.
+    self.options = {};
+
+    $scope.$watchCollection(function() {
+      return self.options;
+    }, function() {
+      self.ngModel.$render();
+    });
+
+    var deregisterCollectionWatch;
+    var defaultIsEmpty;
+    self.setMultiple = function(isMultiple) {
+      var ngModel = self.ngModel;
+      defaultIsEmpty = defaultIsEmpty || ngModel.$isEmpty;
+
+      self.isMultiple = isMultiple;
+      if (deregisterCollectionWatch) deregisterCollectionWatch();
+
+      if (self.isMultiple) {
+        ngModel.$validators['md-multiple'] = validateArray;
+        ngModel.$render = renderMultiple;
+
+        // watchCollection on the model because by default ngModel only watches the model's
+        // reference. This allowed the developer to also push and pop from their array.
+        $scope.$watchCollection(self.modelBinding, function(value) {
+          if (validateArray(value)) renderMultiple(value);
+          self.ngModel.$setPristine();
+        });
+
+        ngModel.$isEmpty = function(value) {
+          return !value || value.length === 0;
+        };
+      } else {
+        delete ngModel.$validators['md-multiple'];
+        ngModel.$render = renderSingular;
+      }
+
+      function validateArray(modelValue, viewValue) {
+        // If a value is truthy but not an array, reject it.
+        // If value is undefined/falsy, accept that it's an empty array.
+        return angular.isArray(modelValue || viewValue || []);
+      }
+    };
+
+    var searchStr = '';
+    var clearSearchTimeout, optNodes, optText;
+    var CLEAR_SEARCH_AFTER = 300;
+
+    self.optNodeForKeyboardSearch = function(e) {
+      clearSearchTimeout && clearTimeout(clearSearchTimeout);
+      clearSearchTimeout = setTimeout(function() {
+        clearSearchTimeout = undefined;
+        searchStr = '';
+        optText = undefined;
+        optNodes = undefined;
+      }, CLEAR_SEARCH_AFTER);
+
+      // Support 1-9 on numpad
+      var keyCode = e.keyCode - ($mdConstant.isNumPadKey(e) ? 48 : 0);
+
+      searchStr += String.fromCharCode(keyCode);
+      var search = new RegExp('^' + searchStr, 'i');
+      if (!optNodes) {
+        optNodes = $element.find('md-option');
+        optText = new Array(optNodes.length);
+        angular.forEach(optNodes, function(el, i) {
+          optText[i] = el.textContent.trim();
+        });
+      }
+      for (var i = 0; i < optText.length; ++i) {
+        if (search.test(optText[i])) {
+          return optNodes[i];
+        }
+      }
+    };
+
+    self.init = function(ngModel, binding) {
+      self.ngModel = ngModel;
+      self.modelBinding = binding;
+
+      // Setup a more robust version of isEmpty to ensure value is a valid option
+      self.ngModel.$isEmpty = function($viewValue) {
+        // We have to transform the viewValue into the hashKey, because otherwise the
+        // OptionCtrl may not exist. Developers may have specified a trackBy function.
+        return !self.options[self.hashGetter($viewValue)];
+      };
+
+      // Allow users to provide `ng-model="foo" ng-model-options="{trackBy: 'foo.id'}"` so
+      // that we can properly compare objects set on the model to the available options
+      var trackByOption = $mdUtil.getModelOption(ngModel, 'trackBy');
+
+      if (trackByOption) {
+        var trackByLocals = {};
+        var trackByParsed = $parse(trackByOption);
+        self.hashGetter = function(value, valueScope) {
+          trackByLocals.$value = value;
+          return trackByParsed(valueScope || $scope, trackByLocals);
+        };
+        // If the user doesn't provide a trackBy, we automatically generate an id for every
+        // value passed in
+      } else {
+        self.hashGetter = function getHashValue(value) {
+          if (angular.isObject(value)) {
+            return 'object_' + (value.$$mdSelectId || (value.$$mdSelectId = ++selectNextId));
+          }
+          return value;
+        };
+      }
+      self.setMultiple(self.isMultiple);
+    };
+
+    self.selectedLabels = function(opts) {
+      opts = opts || {};
+      var mode = opts.mode || 'html';
+      var selectedOptionEls = $mdUtil.nodesToArray($element[0].querySelectorAll('md-option[selected]'));
+      if (selectedOptionEls.length) {
+        var mapFn;
+
+        if (mode == 'html') {
+          // Map the given element to its innerHTML string. If the element has a child ripple
+          // container remove it from the HTML string, before returning the string.
+          mapFn = function(el) {
+            // If we do not have a `value` or `ng-value`, assume it is an empty option which clears the select
+            if (el.hasAttribute('md-option-empty')) {
+              return '';
+            }
+
+            var html = el.innerHTML;
+
+            // Remove the ripple container from the selected option, copying it would cause a CSP violation.
+            var rippleContainer = el.querySelector('.md-ripple-container');
+            if (rippleContainer) {
+              html = html.replace(rippleContainer.outerHTML, '');
+            }
+
+            // Remove the checkbox container, because it will cause the label to wrap inside of the placeholder.
+            // It should be not displayed inside of the label element.
+            var checkboxContainer = el.querySelector('.md-container');
+            if (checkboxContainer) {
+              html = html.replace(checkboxContainer.outerHTML, '');
+            }
+
+            return html;
+          };
+        } else if (mode == 'aria') {
+          mapFn = function(el) { return el.hasAttribute('aria-label') ? el.getAttribute('aria-label') : el.textContent; };
+        }
+
+        // Ensure there are no duplicates; see https://github.com/angular/material/issues/9442
+        return $mdUtil.uniq(selectedOptionEls.map(mapFn)).join(', ');
+      } else {
+        return '';
+      }
+    };
+
+    self.select = function(hashKey, hashedValue) {
+      var option = self.options[hashKey];
+      option && option.setSelected(true);
+      self.selected[hashKey] = hashedValue;
+    };
+    self.deselect = function(hashKey) {
+      var option = self.options[hashKey];
+      option && option.setSelected(false);
+      delete self.selected[hashKey];
+    };
+
+    self.addOption = function(hashKey, optionCtrl) {
+      if (angular.isDefined(self.options[hashKey])) {
+        throw new Error('Duplicate md-option values are not allowed in a select. ' +
+          'Duplicate value "' + optionCtrl.value + '" found.');
+      }
+
+      self.options[hashKey] = optionCtrl;
+
+      // If this option's value was already in our ngModel, go ahead and select it.
+      if (angular.isDefined(self.selected[hashKey])) {
+        self.select(hashKey, optionCtrl.value);
+
+        // When the current $modelValue of the ngModel Controller is using the same hash as
+        // the current option, which will be added, then we can be sure, that the validation
+        // of the option has occurred before the option was added properly.
+        // This means, that we have to manually trigger a new validation of the current option.
+        if (angular.isDefined(self.ngModel.$modelValue) && self.hashGetter(self.ngModel.$modelValue) === hashKey) {
+          self.ngModel.$validate();
+        }
+
+        self.refreshViewValue();
+      }
+    };
+    self.removeOption = function(hashKey) {
+      delete self.options[hashKey];
+      // Don't deselect an option when it's removed - the user's ngModel should be allowed
+      // to have values that do not match a currently available option.
+    };
+
+    self.refreshViewValue = function() {
+      var values = [];
+      var option;
+      for (var hashKey in self.selected) {
+        // If this hashKey has an associated option, push that option's value to the model.
+        if ((option = self.options[hashKey])) {
+          values.push(option.value);
+        } else {
+          // Otherwise, the given hashKey has no associated option, and we got it
+          // from an ngModel value at an earlier time. Push the unhashed value of
+          // this hashKey to the model.
+          // This allows the developer to put a value in the model that doesn't yet have
+          // an associated option.
+          values.push(self.selected[hashKey]);
+        }
+      }
+      var usingTrackBy = $mdUtil.getModelOption(self.ngModel, 'trackBy');
+
+      var newVal = self.isMultiple ? values : values[0];
+      var prevVal = self.ngModel.$modelValue;
+
+      if (usingTrackBy ? !angular.equals(prevVal, newVal) : (prevVal + '') !== newVal) {
+        self.ngModel.$setViewValue(newVal);
+        self.ngModel.$render();
+      }
+    };
+
+    function renderMultiple() {
+      var newSelectedValues = self.ngModel.$modelValue || self.ngModel.$viewValue || [];
+      if (!angular.isArray(newSelectedValues)) return;
+
+      var oldSelected = Object.keys(self.selected);
+
+      var newSelectedHashes = newSelectedValues.map(self.hashGetter);
+      var deselected = oldSelected.filter(function(hash) {
+        return newSelectedHashes.indexOf(hash) === -1;
+      });
+
+      deselected.forEach(self.deselect);
+      newSelectedHashes.forEach(function(hashKey, i) {
+        self.select(hashKey, newSelectedValues[i]);
+      });
+    }
+
+    function renderSingular() {
+      var value = self.ngModel.$viewValue || self.ngModel.$modelValue;
+      Object.keys(self.selected).forEach(self.deselect);
+      self.select(self.hashGetter(value), value);
+    }
+  }
+
+}
+
+function OptionDirective($mdButtonInkRipple, $mdUtil, $mdTheming) {
+
+  OptionController.$inject = ["$element"];
+  return {
+    restrict: 'E',
+    require: ['mdOption', '^^mdSelectMenu'],
+    controller: OptionController,
+    compile: compile
+  };
+
+  function compile(element, attr) {
+    // Manual transclusion to avoid the extra inner <span> that ng-transclude generates
+    element.append(angular.element('<div class="md-text">').append(element.contents()));
+
+    element.attr('tabindex', attr.tabindex || '0');
+
+    if (!hasDefinedValue(attr)) {
+      element.attr('md-option-empty', '');
+    }
+
+    return postLink;
+  }
+
+  function hasDefinedValue(attr) {
+    var value = attr.value;
+    var ngValue = attr.ngValue;
+
+    return value || ngValue;
+  }
+
+  function postLink(scope, element, attr, ctrls) {
+    var optionCtrl = ctrls[0];
+    var selectCtrl = ctrls[1];
+
+    $mdTheming(element);
+
+    if (selectCtrl.isMultiple) {
+      element.addClass('md-checkbox-enabled');
+      element.prepend(CHECKBOX_SELECTION_INDICATOR.clone());
+    }
+
+    if (angular.isDefined(attr.ngValue)) {
+      scope.$watch(attr.ngValue, setOptionValue);
+    } else if (angular.isDefined(attr.value)) {
+      setOptionValue(attr.value);
+    } else {
+      scope.$watch(function() {
+        return element.text().trim();
+      }, setOptionValue);
+    }
+
+    attr.$observe('disabled', function(disabled) {
+      if (disabled) {
+        element.attr('tabindex', '-1');
+      } else {
+        element.attr('tabindex', '0');
+      }
+    });
+
+    scope.$$postDigest(function() {
+      attr.$observe('selected', function(selected) {
+        if (!angular.isDefined(selected)) return;
+        if (typeof selected == 'string') selected = true;
+        if (selected) {
+          if (!selectCtrl.isMultiple) {
+            selectCtrl.deselect(Object.keys(selectCtrl.selected)[0]);
+          }
+          selectCtrl.select(optionCtrl.hashKey, optionCtrl.value);
+        } else {
+          selectCtrl.deselect(optionCtrl.hashKey);
+        }
+        selectCtrl.refreshViewValue();
+      });
+    });
+
+    $mdButtonInkRipple.attach(scope, element);
+    configureAria();
+
+    function setOptionValue(newValue, oldValue, prevAttempt) {
+      if (!selectCtrl.hashGetter) {
+        if (!prevAttempt) {
+          scope.$$postDigest(function() {
+            setOptionValue(newValue, oldValue, true);
+          });
+        }
+        return;
+      }
+      var oldHashKey = selectCtrl.hashGetter(oldValue, scope);
+      var newHashKey = selectCtrl.hashGetter(newValue, scope);
+
+      optionCtrl.hashKey = newHashKey;
+      optionCtrl.value = newValue;
+
+      selectCtrl.removeOption(oldHashKey, optionCtrl);
+      selectCtrl.addOption(newHashKey, optionCtrl);
+    }
+
+    scope.$on('$destroy', function() {
+      selectCtrl.removeOption(optionCtrl.hashKey, optionCtrl);
+    });
+
+    function configureAria() {
+      var ariaAttrs = {
+        'role': 'option',
+        'aria-selected': 'false'
+      };
+
+      if (!element[0].hasAttribute('id')) {
+        ariaAttrs.id = 'select_option_' + $mdUtil.nextUid();
+      }
+      element.attr(ariaAttrs);
+    }
+  }
+
+  function OptionController($element) {
+    this.selected = false;
+    this.setSelected = function(isSelected) {
+      if (isSelected && !this.selected) {
+        $element.attr({
+          'selected': 'selected',
+          'aria-selected': 'true'
+        });
+      } else if (!isSelected && this.selected) {
+        $element.removeAttr('selected');
+        $element.attr('aria-selected', 'false');
+      }
+      this.selected = isSelected;
+    };
+  }
+
+}
+
+function OptgroupDirective() {
+  return {
+    restrict: 'E',
+    compile: compile
+  };
+  function compile(el, attrs) {
+    // If we have a select header element, we don't want to add the normal label
+    // header.
+    if (!hasSelectHeader()) {
+      setupLabelElement();
+    }
+
+    function hasSelectHeader() {
+      return el.parent().find('md-select-header').length;
+    }
+
+    function setupLabelElement() {
+      var labelElement = el.find('label');
+      if (!labelElement.length) {
+        labelElement = angular.element('<label>');
+        el.prepend(labelElement);
+      }
+      labelElement.addClass('md-container-ignore');
+      if (attrs.label) labelElement.text(attrs.label);
+    }
+  }
+}
+
+function SelectHeaderDirective() {
+  return {
+    restrict: 'E',
+  };
+}
+
+function SelectProvider($$interimElementProvider) {
+  selectDefaultOptions.$inject = ["$mdSelect", "$mdConstant", "$mdUtil", "$window", "$q", "$$rAF", "$animateCss", "$animate", "$document"];
+  return $$interimElementProvider('$mdSelect')
+    .setDefaults({
+      methods: ['target'],
+      options: selectDefaultOptions
+    });
+
+  /* @ngInject */
+  function selectDefaultOptions($mdSelect, $mdConstant, $mdUtil, $window, $q, $$rAF, $animateCss, $animate, $document) {
+    var ERROR_TARGET_EXPECTED = "$mdSelect.show() expected a target element in options.target but got '{0}'!";
+    var animator = $mdUtil.dom.animator;
+    var keyCodes = $mdConstant.KEY_CODE;
+
+    return {
+      parent: 'body',
+      themable: true,
+      onShow: onShow,
+      onRemove: onRemove,
+      hasBackdrop: true,
+      disableParentScroll: true
+    };
+
+    /**
+     * Interim-element onRemove logic....
+     */
+    function onRemove(scope, element, opts) {
+      opts = opts || { };
+      opts.cleanupInteraction();
+      opts.cleanupResizing();
+      opts.hideBackdrop();
+
+      // For navigation $destroy events, do a quick, non-animated removal,
+      // but for normal closes (from clicks, etc) animate the removal
+
+      return  (opts.$destroy === true) ? cleanElement() : animateRemoval().then( cleanElement );
+
+      /**
+       * For normal closes (eg clicks), animate the removal.
+       * For forced closes (like $destroy events from navigation),
+       * skip the animations
+       */
+      function animateRemoval() {
+        return $animateCss(element, {addClass: 'md-leave'}).start();
+      }
+
+      /**
+       * Restore the element to a closed state
+       */
+      function cleanElement() {
+
+        element.removeClass('md-active');
+        element.attr('aria-hidden', 'true');
+        element[0].style.display = 'none';
+
+        announceClosed(opts);
+
+        if (!opts.$destroy && opts.restoreFocus) {
+          opts.target.focus();
+        }
+      }
+
+    }
+
+    /**
+     * Interim-element onShow logic....
+     */
+    function onShow(scope, element, opts) {
+
+      watchAsyncLoad();
+      sanitizeAndConfigure(scope, opts);
+
+      opts.hideBackdrop = showBackdrop(scope, element, opts);
+
+      return showDropDown(scope, element, opts)
+        .then(function(response) {
+          element.attr('aria-hidden', 'false');
+          opts.alreadyOpen = true;
+          opts.cleanupInteraction = activateInteraction();
+          opts.cleanupResizing = activateResizing();
+
+          return response;
+        }, opts.hideBackdrop);
+
+      // ************************************
+      // Closure Functions
+      // ************************************
+
+      /**
+       *  Attach the select DOM element(s) and animate to the correct positions
+       *  and scalings...
+       */
+      function showDropDown(scope, element, opts) {
+        opts.parent.append(element);
+
+        return $q(function(resolve, reject) {
+
+          try {
+
+            $animateCss(element, {removeClass: 'md-leave', duration: 0})
+              .start()
+              .then(positionAndFocusMenu)
+              .then(resolve);
+
+          } catch (e) {
+            reject(e);
+          }
+
+        });
+      }
+
+      /**
+       * Initialize container and dropDown menu positions/scale, then animate
+       * to show... and autoFocus.
+       */
+      function positionAndFocusMenu() {
+        return $q(function(resolve) {
+          if (opts.isRemoved) return $q.reject(false);
+
+          var info = calculateMenuPositions(scope, element, opts);
+
+          info.container.element.css(animator.toCss(info.container.styles));
+          info.dropDown.element.css(animator.toCss(info.dropDown.styles));
+
+          $$rAF(function() {
+            element.addClass('md-active');
+            info.dropDown.element.css(animator.toCss({transform: ''}));
+
+            autoFocus(opts.focusedNode);
+            resolve();
+          });
+
+        });
+      }
+
+      /**
+       * Show modal backdrop element...
+       */
+      function showBackdrop(scope, element, options) {
+
+        // If we are not within a dialog...
+        if (options.disableParentScroll && !$mdUtil.getClosest(options.target, 'MD-DIALOG')) {
+          // !! DO this before creating the backdrop; since disableScrollAround()
+          //    configures the scroll offset; which is used by mdBackDrop postLink()
+          options.restoreScroll = $mdUtil.disableScrollAround(options.element, options.parent);
+        } else {
+          options.disableParentScroll = false;
+        }
+
+        if (options.hasBackdrop) {
+          // Override duration to immediately show invisible backdrop
+          options.backdrop = $mdUtil.createBackdrop(scope, "md-select-backdrop md-click-catcher");
+          $animate.enter(options.backdrop, $document[0].body, null, {duration: 0});
+        }
+
+        /**
+         * Hide modal backdrop element...
+         */
+        return function hideBackdrop() {
+          if (options.backdrop) options.backdrop.remove();
+          if (options.disableParentScroll) options.restoreScroll();
+
+          delete options.restoreScroll;
+        };
+      }
+
+      /**
+       *
+       */
+      function autoFocus(focusedNode) {
+        if (focusedNode && !focusedNode.hasAttribute('disabled')) {
+          focusedNode.focus();
+        }
+      }
+
+      /**
+       * Check for valid opts and set some sane defaults
+       */
+      function sanitizeAndConfigure(scope, options) {
+        var selectEl = element.find('md-select-menu');
+
+        if (!options.target) {
+          throw new Error($mdUtil.supplant(ERROR_TARGET_EXPECTED, [options.target]));
+        }
+
+        angular.extend(options, {
+          isRemoved: false,
+          target: angular.element(options.target), //make sure it's not a naked dom node
+          parent: angular.element(options.parent),
+          selectEl: selectEl,
+          contentEl: element.find('md-content'),
+          optionNodes: selectEl[0].getElementsByTagName('md-option')
+        });
+      }
+
+      /**
+       * Configure various resize listeners for screen changes
+       */
+      function activateResizing() {
+        var debouncedOnResize = (function(scope, target, options) {
+
+          return function() {
+            if (options.isRemoved) return;
+
+            var updates = calculateMenuPositions(scope, target, options);
+            var container = updates.container;
+            var dropDown = updates.dropDown;
+
+            container.element.css(animator.toCss(container.styles));
+            dropDown.element.css(animator.toCss(dropDown.styles));
+          };
+
+        })(scope, element, opts);
+
+        var window = angular.element($window);
+        window.on('resize', debouncedOnResize);
+        window.on('orientationchange', debouncedOnResize);
+
+        // Publish deactivation closure...
+        return function deactivateResizing() {
+
+          // Disable resizing handlers
+          window.off('resize', debouncedOnResize);
+          window.off('orientationchange', debouncedOnResize);
+        };
+      }
+
+      /**
+       *  If asynchronously loading, watch and update internal
+       *  '$$loadingAsyncDone' flag
+       */
+      function watchAsyncLoad() {
+        if (opts.loadingAsync && !opts.isRemoved) {
+          scope.$$loadingAsyncDone = false;
+
+          $q.when(opts.loadingAsync)
+            .then(function() {
+              scope.$$loadingAsyncDone = true;
+              delete opts.loadingAsync;
+            }).then(function() {
+              $$rAF(positionAndFocusMenu);
+            });
+        }
+      }
+
+      /**
+       *
+       */
+      function activateInteraction() {
+        if (opts.isRemoved) return;
+
+        var dropDown = opts.selectEl;
+        var selectCtrl = dropDown.controller('mdSelectMenu') || {};
+
+        element.addClass('md-clickable');
+
+        // Close on backdrop click
+        opts.backdrop && opts.backdrop.on('click', onBackdropClick);
+
+        // Escape to close
+        // Cycling of options, and closing on enter
+        dropDown.on('keydown', onMenuKeyDown);
+        dropDown.on('click', checkCloseMenu);
+
+        return function cleanupInteraction() {
+          opts.backdrop && opts.backdrop.off('click', onBackdropClick);
+          dropDown.off('keydown', onMenuKeyDown);
+          dropDown.off('click', checkCloseMenu);
+
+          element.removeClass('md-clickable');
+          opts.isRemoved = true;
+        };
+
+        // ************************************
+        // Closure Functions
+        // ************************************
+
+        function onBackdropClick(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          opts.restoreFocus = false;
+          $mdUtil.nextTick($mdSelect.hide, true);
+        }
+
+        function onMenuKeyDown(ev) {
+          ev.preventDefault();
+          ev.stopPropagation();
+
+          switch (ev.keyCode) {
+            case keyCodes.UP_ARROW:
+              return focusPrevOption();
+            case keyCodes.DOWN_ARROW:
+              return focusNextOption();
+            case keyCodes.SPACE:
+            case keyCodes.ENTER:
+              var option = $mdUtil.getClosest(ev.target, 'md-option');
+              if (option) {
+                dropDown.triggerHandler({
+                  type: 'click',
+                  target: option
+                });
+                ev.preventDefault();
+              }
+              checkCloseMenu(ev);
+              break;
+            case keyCodes.TAB:
+            case keyCodes.ESCAPE:
+              ev.stopPropagation();
+              ev.preventDefault();
+              opts.restoreFocus = true;
+              $mdUtil.nextTick($mdSelect.hide, true);
+              break;
+            default:
+              if (shouldHandleKey(ev, $mdConstant)) {
+                var optNode = dropDown.controller('mdSelectMenu').optNodeForKeyboardSearch(ev);
+                opts.focusedNode = optNode || opts.focusedNode;
+                optNode && optNode.focus();
+              }
+          }
+        }
+
+        function focusOption(direction) {
+          var optionsArray = $mdUtil.nodesToArray(opts.optionNodes);
+          var index = optionsArray.indexOf(opts.focusedNode);
+
+          var newOption;
+
+          do {
+            if (index === -1) {
+              // We lost the previously focused element, reset to first option
+              index = 0;
+            } else if (direction === 'next' && index < optionsArray.length - 1) {
+              index++;
+            } else if (direction === 'prev' && index > 0) {
+              index--;
+            }
+            newOption = optionsArray[index];
+            if (newOption.hasAttribute('disabled')) newOption = undefined;
+          } while (!newOption && index < optionsArray.length - 1 && index > 0);
+
+          newOption && newOption.focus();
+          opts.focusedNode = newOption;
+        }
+
+        function focusNextOption() {
+          focusOption('next');
+        }
+
+        function focusPrevOption() {
+          focusOption('prev');
+        }
+
+        function checkCloseMenu(ev) {
+          if (ev && ( ev.type == 'click') && (ev.currentTarget != dropDown[0])) return;
+          if ( mouseOnScrollbar() ) return;
+
+          var option = $mdUtil.getClosest(ev.target, 'md-option');
+          if (option && option.hasAttribute && !option.hasAttribute('disabled')) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            if (!selectCtrl.isMultiple) {
+              opts.restoreFocus = true;
+
+              $mdUtil.nextTick(function () {
+                $mdSelect.hide(selectCtrl.ngModel.$viewValue);
+              }, true);
+            }
+          }
+          /**
+           * check if the mouseup event was on a scrollbar
+           */
+          function mouseOnScrollbar() {
+            var clickOnScrollbar = false;
+            if (ev && (ev.currentTarget.children.length > 0)) {
+              var child = ev.currentTarget.children[0];
+              var hasScrollbar = child.scrollHeight > child.clientHeight;
+              if (hasScrollbar && child.children.length > 0) {
+                var relPosX = ev.pageX - ev.currentTarget.getBoundingClientRect().left;
+                if (relPosX > child.querySelector('md-option').offsetWidth)
+                  clickOnScrollbar = true;
+              }
+            }
+            return clickOnScrollbar;
+          }
+        }
+      }
+
+    }
+
+    /**
+     * To notify listeners that the Select menu has closed,
+     * trigger the [optional] user-defined expression
+     */
+    function announceClosed(opts) {
+      var mdSelect = opts.selectCtrl;
+      if (mdSelect) {
+        var menuController = opts.selectEl.controller('mdSelectMenu');
+        mdSelect.setLabelText(menuController ? menuController.selectedLabels() : '');
+        mdSelect.triggerClose();
+      }
+    }
+
+
+    /**
+     * Calculate the
+     */
+    function calculateMenuPositions(scope, element, opts) {
+      var
+        containerNode = element[0],
+        targetNode = opts.target[0].children[0], // target the label
+        parentNode = $document[0].body,
+        selectNode = opts.selectEl[0],
+        contentNode = opts.contentEl[0],
+        parentRect = parentNode.getBoundingClientRect(),
+        targetRect = targetNode.getBoundingClientRect(),
+        shouldOpenAroundTarget = false,
+        bounds = {
+          left: parentRect.left + SELECT_EDGE_MARGIN,
+          top: SELECT_EDGE_MARGIN,
+          bottom: parentRect.height - SELECT_EDGE_MARGIN,
+          right: parentRect.width - SELECT_EDGE_MARGIN - ($mdUtil.floatingScrollbars() ? 16 : 0)
+        },
+        spaceAvailable = {
+          top: targetRect.top - bounds.top,
+          left: targetRect.left - bounds.left,
+          right: bounds.right - (targetRect.left + targetRect.width),
+          bottom: bounds.bottom - (targetRect.top + targetRect.height)
+        },
+        maxWidth = parentRect.width - SELECT_EDGE_MARGIN * 2,
+        selectedNode = selectNode.querySelector('md-option[selected]'),
+        optionNodes = selectNode.getElementsByTagName('md-option'),
+        optgroupNodes = selectNode.getElementsByTagName('md-optgroup'),
+        isScrollable = calculateScrollable(element, contentNode),
+        centeredNode;
+
+      var loading = isPromiseLike(opts.loadingAsync);
+      if (!loading) {
+        // If a selected node, center around that
+        if (selectedNode) {
+          centeredNode = selectedNode;
+          // If there are option groups, center around the first option group
+        } else if (optgroupNodes.length) {
+          centeredNode = optgroupNodes[0];
+          // Otherwise - if we are not loading async - center around the first optionNode
+        } else if (optionNodes.length) {
+          centeredNode = optionNodes[0];
+          // In case there are no options, center on whatever's in there... (eg progress indicator)
+        } else {
+          centeredNode = contentNode.firstElementChild || contentNode;
+        }
+      } else {
+        // If loading, center on progress indicator
+        centeredNode = contentNode.firstElementChild || contentNode;
+      }
+
+      if (contentNode.offsetWidth > maxWidth) {
+        contentNode.style['max-width'] = maxWidth + 'px';
+      } else {
+        contentNode.style.maxWidth = null;
+      }
+      if (shouldOpenAroundTarget) {
+        contentNode.style['min-width'] = targetRect.width + 'px';
+      }
+
+      // Remove padding before we compute the position of the menu
+      if (isScrollable) {
+        selectNode.classList.add('md-overflow');
+      }
+
+      var focusedNode = centeredNode;
+      if ((focusedNode.tagName || '').toUpperCase() === 'MD-OPTGROUP') {
+        focusedNode = optionNodes[0] || contentNode.firstElementChild || contentNode;
+        centeredNode = focusedNode;
+      }
+      // Cache for autoFocus()
+      opts.focusedNode = focusedNode;
+
+      // Get the selectMenuRect *after* max-width is possibly set above
+      containerNode.style.display = 'block';
+      var selectMenuRect = selectNode.getBoundingClientRect();
+      var centeredRect = getOffsetRect(centeredNode);
+
+      if (centeredNode) {
+        var centeredStyle = $window.getComputedStyle(centeredNode);
+        centeredRect.paddingLeft = parseInt(centeredStyle.paddingLeft, 10) || 0;
+        centeredRect.paddingRight = parseInt(centeredStyle.paddingRight, 10) || 0;
+      }
+
+      if (isScrollable) {
+        var scrollBuffer = contentNode.offsetHeight / 2;
+        contentNode.scrollTop = centeredRect.top + centeredRect.height / 2 - scrollBuffer;
+
+        if (spaceAvailable.top < scrollBuffer) {
+          contentNode.scrollTop = Math.min(
+            centeredRect.top,
+            contentNode.scrollTop + scrollBuffer - spaceAvailable.top
+          );
+        } else if (spaceAvailable.bottom < scrollBuffer) {
+          contentNode.scrollTop = Math.max(
+            centeredRect.top + centeredRect.height - selectMenuRect.height,
+            contentNode.scrollTop - scrollBuffer + spaceAvailable.bottom
+          );
+        }
+      }
+
+      var left, top, transformOrigin, minWidth, fontSize;
+      if (shouldOpenAroundTarget) {
+        left = targetRect.left;
+        top = targetRect.top + targetRect.height;
+        transformOrigin = '50% 0';
+        if (top + selectMenuRect.height > bounds.bottom) {
+          top = targetRect.top - selectMenuRect.height;
+          transformOrigin = '50% 100%';
+        }
+      } else {
+        left = (targetRect.left + centeredRect.left - centeredRect.paddingLeft) + 2;
+        top = Math.floor(targetRect.top + targetRect.height / 2 - centeredRect.height / 2 -
+            centeredRect.top + contentNode.scrollTop) + 2;
+
+        transformOrigin = (centeredRect.left + targetRect.width / 2) + 'px ' +
+          (centeredRect.top + centeredRect.height / 2 - contentNode.scrollTop) + 'px 0px';
+
+        minWidth = Math.min(targetRect.width + centeredRect.paddingLeft + centeredRect.paddingRight, maxWidth);
+
+        fontSize = window.getComputedStyle(targetNode)['font-size'];
+      }
+
+      // Keep left and top within the window
+      var containerRect = containerNode.getBoundingClientRect();
+      var scaleX = Math.round(100 * Math.min(targetRect.width / selectMenuRect.width, 1.0)) / 100;
+      var scaleY = Math.round(100 * Math.min(targetRect.height / selectMenuRect.height, 1.0)) / 100;
+
+      return {
+        container: {
+          element: angular.element(containerNode),
+          styles: {
+            left: Math.floor(clamp(bounds.left, left, bounds.right - containerRect.width)),
+            top: Math.floor(clamp(bounds.top, top, bounds.bottom - containerRect.height)),
+            'min-width': minWidth,
+            'font-size': fontSize
+          }
+        },
+        dropDown: {
+          element: angular.element(selectNode),
+          styles: {
+            transformOrigin: transformOrigin,
+            transform: !opts.alreadyOpen ? $mdUtil.supplant('scale({0},{1})', [scaleX, scaleY]) : ""
+          }
+        }
+      };
+
+    }
+
+  }
+
+  function isPromiseLike(obj) {
+    return obj && angular.isFunction(obj.then);
+  }
+
+  function clamp(min, n, max) {
+    return Math.max(min, Math.min(n, max));
+  }
+
+  function getOffsetRect(node) {
+    return node ? {
+      left: node.offsetLeft,
+      top: node.offsetTop,
+      width: node.offsetWidth,
+      height: node.offsetHeight
+    } : {left: 0, top: 0, width: 0, height: 0};
+  }
+
+  function calculateScrollable(element, contentNode) {
+    var isScrollable = false;
+
+    try {
+      var oldDisplay = element[0].style.display;
+
+      // Set the element's display to block so that this calculation is correct
+      element[0].style.display = 'block';
+
+      isScrollable = contentNode.scrollHeight > contentNode.offsetHeight;
+
+      // Reset it back afterwards
+      element[0].style.display = oldDisplay;
+    } finally {
+      // Nothing to do
+    }
+    return isScrollable;
+  }
+
+}
+
+function shouldHandleKey(ev, $mdConstant) {
+  var char = String.fromCharCode(ev.keyCode);
+  var isNonUsefulKey = (ev.keyCode <= 31);
+
+  return (char && char.length && !isNonUsefulKey &&
+    !$mdConstant.isMetaKey(ev) && !$mdConstant.isFnLockKey(ev) && !$mdConstant.hasModifierKey(ev));
 }
 
 })();
@@ -60438,109 +60630,6 @@ function MdSubheaderDirective($mdSticky, $compile, $mdTheming, $mdUtil, $mdAria)
 
 /**
  * @ngdoc module
- * @name material.components.swipe
- * @description Swipe module!
- */
-/**
- * @ngdoc directive
- * @module material.components.swipe
- * @name mdSwipeLeft
- *
- * @restrict A
- *
- * @description
- * The md-swipe-left directive allows you to specify custom behavior when an element is swiped
- * left.
- *
- * @usage
- * <hljs lang="html">
- * <div md-swipe-left="onSwipeLeft()">Swipe me left!</div>
- * </hljs>
- */
-/**
- * @ngdoc directive
- * @module material.components.swipe
- * @name mdSwipeRight
- *
- * @restrict A
- *
- * @description
- * The md-swipe-right directive allows you to specify custom behavior when an element is swiped
- * right.
- *
- * @usage
- * <hljs lang="html">
- * <div md-swipe-right="onSwipeRight()">Swipe me right!</div>
- * </hljs>
- */
-/**
- * @ngdoc directive
- * @module material.components.swipe
- * @name mdSwipeUp
- *
- * @restrict A
- *
- * @description
- * The md-swipe-up directive allows you to specify custom behavior when an element is swiped
- * up.
- *
- * @usage
- * <hljs lang="html">
- * <div md-swipe-up="onSwipeUp()">Swipe me up!</div>
- * </hljs>
- */
-/**
- * @ngdoc directive
- * @module material.components.swipe
- * @name mdSwipeDown
- *
- * @restrict A
- *
- * @description
- * The md-swipe-down directive allows you to specify custom behavior when an element is swiped
- * down.
- *
- * @usage
- * <hljs lang="html">
- * <div md-swipe-down="onSwipDown()">Swipe me down!</div>
- * </hljs>
- */
-
-angular.module('material.components.swipe', ['material.core'])
-    .directive('mdSwipeLeft', getDirective('SwipeLeft'))
-    .directive('mdSwipeRight', getDirective('SwipeRight'))
-    .directive('mdSwipeUp', getDirective('SwipeUp'))
-    .directive('mdSwipeDown', getDirective('SwipeDown'));
-
-function getDirective(name) {
-    DirectiveFactory.$inject = ["$parse"];
-  var directiveName = 'md' + name;
-  var eventName = '$md.' + name.toLowerCase();
-
-  return DirectiveFactory;
-
-  /* @ngInject */
-  function DirectiveFactory($parse) {
-      return { restrict: 'A', link: postLink };
-      function postLink(scope, element, attr) {
-        element.css('touch-action', 'none');
-
-        var fn = $parse(attr[directiveName]);
-        element.on(eventName, function(ev) {
-          scope.$applyAsync(function() { fn(scope, { $event: ev }); });
-        });
-      }
-    }
-}
-
-
-
-})();
-(function(){
-"use strict";
-
-/**
- * @ngdoc module
  * @name material.components.switch
  */
 
@@ -60567,7 +60656,7 @@ angular.module('material.components.switch', [
  * @param {string=} name Property name of the form under which the control is published.
  * @param {expression=} ng-true-value The value to which the expression should be set when selected.
  * @param {expression=} ng-false-value The value to which the expression should be set when not selected.
- * @param {string=} ng-change Angular expression to be executed when input changes due to user interaction with the input element.
+ * @param {string=} ng-change AngularJS expression to be executed when input changes due to user interaction with the input element.
  * @param {expression=} ng-disabled En/Disable based on the expression.
  * @param {boolean=} md-no-ink Use of attribute indicates use of ripple ink effects.
  * @param {string=} aria-label Publish the button label used by screen-readers for accessibility. Defaults to the switch's text.
@@ -60718,6 +60807,142 @@ function MdSwitch(mdCheckboxDirective, $mdUtil, $mdConstant, $parse, $$rAF, $mdG
 
 
 }
+
+})();
+(function(){
+"use strict";
+
+/**
+ * @ngdoc module
+ * @name material.components.swipe
+ * @description Swipe module!
+ */
+/**
+ * @ngdoc directive
+ * @module material.components.swipe
+ * @name mdSwipeLeft
+ *
+ * @restrict A
+ *
+ * @description
+ * The md-swipe-left directive allows you to specify custom behavior when an element is swiped
+ * left.
+ *
+ * @usage
+ * <hljs lang="html">
+ * <div md-swipe-left="onSwipeLeft()">Swipe me left!</div>
+ * </hljs>
+ */
+/**
+ * @ngdoc directive
+ * @module material.components.swipe
+ * @name mdSwipeRight
+ *
+ * @restrict A
+ *
+ * @description
+ * The md-swipe-right directive allows you to specify custom behavior when an element is swiped
+ * right.
+ *
+ * @usage
+ * <hljs lang="html">
+ * <div md-swipe-right="onSwipeRight()">Swipe me right!</div>
+ * </hljs>
+ */
+/**
+ * @ngdoc directive
+ * @module material.components.swipe
+ * @name mdSwipeUp
+ *
+ * @restrict A
+ *
+ * @description
+ * The md-swipe-up directive allows you to specify custom behavior when an element is swiped
+ * up.
+ *
+ * @usage
+ * <hljs lang="html">
+ * <div md-swipe-up="onSwipeUp()">Swipe me up!</div>
+ * </hljs>
+ */
+/**
+ * @ngdoc directive
+ * @module material.components.swipe
+ * @name mdSwipeDown
+ *
+ * @restrict A
+ *
+ * @description
+ * The md-swipe-down directive allows you to specify custom behavior when an element is swiped
+ * down.
+ *
+ * @usage
+ * <hljs lang="html">
+ * <div md-swipe-down="onSwipDown()">Swipe me down!</div>
+ * </hljs>
+ */
+
+angular.module('material.components.swipe', ['material.core'])
+    .directive('mdSwipeLeft', getDirective('SwipeLeft'))
+    .directive('mdSwipeRight', getDirective('SwipeRight'))
+    .directive('mdSwipeUp', getDirective('SwipeUp'))
+    .directive('mdSwipeDown', getDirective('SwipeDown'));
+
+function getDirective(name) {
+    DirectiveFactory.$inject = ["$parse"];
+  var directiveName = 'md' + name;
+  var eventName = '$md.' + name.toLowerCase();
+
+  return DirectiveFactory;
+
+  /* @ngInject */
+  function DirectiveFactory($parse) {
+      return {restrict: 'A', link: postLink};
+
+    function postLink(scope, element, attr) {
+        element.css('touch-action', attr['mdSwipeTouchAction'] || 'none');
+
+        var fn = $parse(attr[directiveName]);
+        element.on(eventName, function(ev) {
+          scope.$applyAsync(function() { fn(scope, { $event: ev }); });
+        });
+      }
+    }
+}
+
+
+
+})();
+(function(){
+"use strict";
+
+/**
+ * @ngdoc module
+ * @name material.components.tabs
+ * @description
+ *
+ *  Tabs, created with the `<md-tabs>` directive provide *tabbed* navigation with different styles.
+ *  The Tabs component consists of clickable tabs that are aligned horizontally side-by-side.
+ *
+ *  Features include support for:
+ *
+ *  - static or dynamic tabs,
+ *  - responsive designs,
+ *  - accessibility support (ARIA),
+ *  - tab pagination,
+ *  - external or internal tab content,
+ *  - focus indicators and arrow-key navigations,
+ *  - programmatic lookup and access to tab controllers, and
+ *  - dynamic transitions through different tab contents.
+ *
+ */
+/*
+ * @see js folder for tabs implementation
+ */
+angular.module('material.components.tabs', [
+  'material.core',
+  'material.components.icon'
+]);
 
 })();
 (function(){
@@ -61209,38 +61434,6 @@ function MdToastProvider($$interimElementProvider) {
 
 /**
  * @ngdoc module
- * @name material.components.tabs
- * @description
- *
- *  Tabs, created with the `<md-tabs>` directive provide *tabbed* navigation with different styles.
- *  The Tabs component consists of clickable tabs that are aligned horizontally side-by-side.
- *
- *  Features include support for:
- *
- *  - static or dynamic tabs,
- *  - responsive designs,
- *  - accessibility support (ARIA),
- *  - tab pagination,
- *  - external or internal tab content,
- *  - focus indicators and arrow-key navigations,
- *  - programmatic lookup and access to tab controllers, and
- *  - dynamic transitions through different tab contents.
- *
- */
-/*
- * @see js folder for tabs implementation
- */
-angular.module('material.components.tabs', [
-  'material.core',
-  'material.components.icon'
-]);
-
-})();
-(function(){
-"use strict";
-
-/**
- * @ngdoc module
  * @name material.components.toolbar
  */
 mdToolbarDirective.$inject = ["$$rAF", "$mdConstant", "$mdUtil", "$mdTheming", "$animate"];
@@ -61581,6 +61774,7 @@ function MdTooltipDirective($timeout, $window, $$rAF, $document, $interpolate,
 
   function linkFunc(scope, element, attr) {
     // Set constants.
+    var tooltipId = 'md-tooltip-' + $mdUtil.nextUid();
     var parent = $mdUtil.getParentWithPointerEvents(element);
     var debouncedOnResize = $$rAF.throttle(updatePosition);
     var mouseActive = false;
@@ -61608,12 +61802,24 @@ function MdTooltipDirective($timeout, $window, $$rAF, $document, $interpolate,
       }
     }
 
-    function addAriaLabel(override) {
-      if (override || !parent.attr('aria-label')) {
-        // Only interpolate the text from the HTML element because otherwise the custom text
-        // could be interpolated twice and cause XSS violations.
-        var interpolatedText = override || $interpolate(element.text().trim())(scope.$parent);
+    function addAriaLabel(labelText) {
+      // Only interpolate the text from the HTML element because otherwise the custom text could
+      // be interpolated twice and cause XSS violations.
+      var interpolatedText = labelText || $interpolate(element.text().trim())(scope.$parent);
+
+      // Only add the `aria-label` to the parent if there isn't already one, if there isn't an
+      // already present `aria-labelledby`, or if the previous `aria-label` was added by the
+      // tooltip directive.
+      if (
+        (!parent.attr('aria-label') && !parent.attr('aria-labelledby')) ||
+        parent.attr('md-labeled-by-tooltip')
+      ) {
         parent.attr('aria-label', interpolatedText);
+
+        // Set the `md-labeled-by-tooltip` attribute if it has not already been set.
+        if (!parent.attr('md-labeled-by-tooltip')) {
+          parent.attr('md-labeled-by-tooltip', tooltipId);
+        }
       }
     }
 
@@ -61866,7 +62072,6 @@ function MdTooltipDirective($timeout, $window, $$rAF, $document, $interpolate,
       }
 
       if (!panelRef) {
-        var id = 'tooltip-' + $mdUtil.nextUid();
         var attachTo = angular.element(document.body);
         var panelAnimation = $mdPanel.newPanelAnimation()
             .openFrom(parent)
@@ -61877,7 +62082,7 @@ function MdTooltipDirective($timeout, $window, $$rAF, $document, $interpolate,
             });
 
         var panelConfig = {
-          id: id,
+          id: tooltipId,
           attachTo: attachTo,
           contentElement: element,
           propagateContainerEvents: true,
@@ -62199,7 +62404,7 @@ function VirtualRepeatContainerController($$rAF, $mdUtil, $mdConstant, $parse, $
   this.maxElementPixels = $mdConstant.ELEMENT_MAX_PIXELS;
 
   if (this.$attrs.mdTopIndex) {
-    /** @type {function(angular.Scope): number} Binds to topIndex on Angular scope */
+    /** @type {function(angular.Scope): number} Binds to topIndex on AngularJS scope */
     this.bindTopIndex = $parse(this.$attrs.mdTopIndex);
     /** @type {number} The index of the item that is at the top of the scroll container */
     this.topIndex = this.bindTopIndex(this.$scope);
@@ -62835,12 +63040,14 @@ VirtualRepeatController.prototype.virtualRepeatUpdate_ = function(items, oldItem
     this.container.setScrollSize(itemsLength * this.itemSize);
   }
 
+  var cleanupFirstRender = false, firstRenderStartIndex;
   if (this.isFirstRender) {
+    cleanupFirstRender = true;
     this.isFirstRender = false;
-    var startIndex = this.$attrs.mdStartIndex ?
+    firstRenderStartIndex = this.$attrs.mdStartIndex ?
       this.$scope.$eval(this.$attrs.mdStartIndex) :
       this.container.topIndex;
-    this.container.scrollToIndex(startIndex);
+    this.container.scrollToIndex(firstRenderStartIndex);
   }
 
   // Detach and pool any blocks that are no longer in the viewport.
@@ -62894,6 +63101,10 @@ VirtualRepeatController.prototype.virtualRepeatUpdate_ = function(items, oldItem
         this.blocks[maxIndex] && this.blocks[maxIndex].element[0].nextSibling);
   }
 
+  // DOM manipulation may have altered scroll, so scroll again
+  if (cleanupFirstRender) {
+    this.container.scrollToIndex(firstRenderStartIndex);
+  }
   // Restore $$checkUrlChange.
   this.$browser.$$checkUrlChange = this.browserCheckUrlChange;
 
@@ -63266,7 +63477,7 @@ function MdAutocompleteCtrl ($scope, $element, $mdUtil, $mdConstant, $mdTheming,
 
     // Automatically determine dropdown placement based on available space in viewport.
     if (!position) {
-      position = (top > bot && root.height - hrect.bottom - MENU_PADDING < dropdownHeight) ? 'top' : 'bottom';
+      position = (top > bot && root.height - top - MENU_PADDING < dropdownHeight) ? 'top' : 'bottom';
     }
     // Adjust the width to account for the padding provided by `md-input-container`
     if ($attrs.mdFloatingLabel) {
@@ -66262,7 +66473,7 @@ MdChipsCtrl.prototype.contentIdFor = function(index) {
     return {
       template: function(element, attrs) {
         // Clone the element into an attribute. By prepending the attribute
-        // name with '$', Angular won't write it into the DOM. The cloned
+        // name with '$', AngularJS won't write it into the DOM. The cloned
         // element propagates to the link function via the attrs argument,
         // where various contained-elements can be consumed.
         attrs['$mdUserTemplate'] = element.clone();
@@ -66659,7 +66870,7 @@ function MdContactChips($mdTheming, $mdUtil) {
    *
    * @description
    * `<md-calendar>` is a component that renders a calendar that can be used to select a date.
-   * It is a part of the `<md-datepicker` pane, however it can also be used on it's own.
+   * It is a part of the `<md-datepicker>` pane, however it can also be used on it's own.
    *
    * @usage
    *
@@ -66861,7 +67072,7 @@ function MdContactChips($mdTheming, $mdUtil) {
       handleKeyElement.off('keydown', boundKeyHandler);
     });
 
-    // For Angular 1.4 and older, where there are no lifecycle hooks but bindings are pre-assigned,
+    // For AngularJS 1.4 and older, where there are no lifecycle hooks but bindings are pre-assigned,
     // manually call the $onInit hook.
     if (angular.version.major === 1 && angular.version.minor <= 4) {
       this.$onInit();
@@ -66870,7 +67081,7 @@ function MdContactChips($mdTheming, $mdUtil) {
   }
 
   /**
-   * Angular Lifecycle hook for newer Angular versions.
+   * AngularJS Lifecycle hook for newer AngularJS versions.
    * Bindings are not guaranteed to have been assigned in the controller, but they are in the $onInit hook.
    */
   CalendarCtrl.prototype.$onInit = function() {
@@ -68170,13 +68381,13 @@ function MdContactChips($mdTheming, $mdUtil) {
    * @description
    * The `$mdDateLocaleProvider` is the provider that creates the `$mdDateLocale` service.
    * This provider that allows the user to specify messages, formatters, and parsers for date
-   * internationalization. The `$mdDateLocale` service itself is consumed by Angular Material
+   * internationalization. The `$mdDateLocale` service itself is consumed by AngularJS Material
    * components that deal with dates.
    *
    * @property {(Array<string>)=} months Array of month names (in order).
    * @property {(Array<string>)=} shortMonths Array of abbreviated month names.
    * @property {(Array<string>)=} days Array of the days of the week (in order).
-   * @property {(Array<string>)=} shortDays Array of abbreviated dayes of the week.
+   * @property {(Array<string>)=} shortDays Array of abbreviated days of the week.
    * @property {(Array<string>)=} dates Array of dates of the month. Only necessary for locales
    *     using a numeral system other than [1, 2, 3...].
    * @property {(Array<string>)=} firstDayOfWeek The first day of the week. Sunday = 0, Monday = 1,
@@ -68187,7 +68398,7 @@ function MdContactChips($mdTheming, $mdUtil) {
    * @property {(function(Date): string)=} monthHeaderFormatter Function that returns the label for
    *     a month given a date.
    * @property {(function(Date): string)=} monthFormatter Function that returns the full name of a month
-   *     for a giben date.
+   *     for a given date.
    * @property {(function(number): string)=} weekNumberFormatter Function that returns a label for
    *     a week given the week number.
    * @property {(string)=} msgCalendar Translation of the label "Calendar" for the current locale.
@@ -68805,7 +69016,7 @@ function MdContactChips($mdTheming, $mdUtil) {
    * @name mdDatepicker
    * @module material.components.datepicker
    *
-   * @param {Date} ng-model The component's model. Expects a JavaScript Date object.
+   * @param {Date} ng-model The component's model. Expects either a JavaScript Date object or a value that can be parsed into one (e.g. a ISO 8601 string).
    * @param {Object=} ng-model-options Allows tuning of the way in which `ng-model` is being updated. Also allows
    * for a timezone to be specified. <a href="https://docs.angularjs.org/api/ng/directive/ngModelOptions#usage">Read more at the ngModelOptions docs.</a>
    * @param {expression=} ng-change Expression evaluated when the model value changes.
@@ -69135,7 +69346,7 @@ function MdContactChips($mdTheming, $mdUtil) {
     /** Pre-bound handler for the window blur event. Allows for it to be removed later. */
     this.windowBlurHandler = angular.bind(this, this.handleWindowBlur);
 
-    /** The built-in Angular date filter. */
+    /** The built-in AngularJS date filter. */
     this.ngDateFilter = $filter('date');
 
     /** @type {Number} Extra margin for the left side of the floating calendar pane. */
@@ -69177,7 +69388,7 @@ function MdContactChips($mdTheming, $mdUtil) {
       });
     }
 
-    // For Angular 1.4 and older, where there are no lifecycle hooks but bindings are pre-assigned,
+    // For AngularJS 1.4 and older, where there are no lifecycle hooks but bindings are pre-assigned,
     // manually call the $onInit hook.
     if (angular.version.major === 1 && angular.version.minor <= 4) {
       this.$onInit();
@@ -69186,7 +69397,7 @@ function MdContactChips($mdTheming, $mdUtil) {
   }
 
   /**
-   * Angular Lifecycle hook for newer Angular versions.
+   * AngularJS Lifecycle hook for newer AngularJS versions.
    * Bindings are not guaranteed to have been assigned in the controller, but they are in the $onInit hook.
    */
   DatePickerCtrl.prototype.$onInit = function() {
@@ -69205,20 +69416,20 @@ function MdContactChips($mdTheming, $mdUtil) {
 
   /**
    * Sets up the controller's reference to ngModelController and
-   * applies Angular's `input[type="date"]` directive.
+   * applies AngularJS's `input[type="date"]` directive.
    * @param {!angular.NgModelController} ngModelCtrl Instance of the ngModel controller.
    * @param {Object} mdInputContainer Instance of the mdInputContainer controller.
-   * @param {Object} inputDirective Config for Angular's `input` directive.
+   * @param {Object} inputDirective Config for AngularJS's `input` directive.
    */
   DatePickerCtrl.prototype.configureNgModel = function(ngModelCtrl, mdInputContainer, inputDirective) {
     this.ngModelCtrl = ngModelCtrl;
     this.mdInputContainer = mdInputContainer;
 
-    // The input needs to be [type="date"] in order to be picked up by Angular.
+    // The input needs to be [type="date"] in order to be picked up by AngularJS.
     this.$attrs.$set('type', 'date');
 
     // Invoke the `input` directive link function, adding a stub for the element.
-    // This allows us to re-use Angular's logic for setting the timezone via ng-model-options.
+    // This allows us to re-use AngularJS's logic for setting the timezone via ng-model-options.
     // It works by calling the link function directly which then adds the proper `$parsers` and
     // `$formatters` to the ngModel controller.
     inputDirective[0].link.pre(this.$scope, {
@@ -69231,9 +69442,18 @@ function MdContactChips($mdTheming, $mdUtil) {
 
     // Responds to external changes to the model value.
     self.ngModelCtrl.$formatters.push(function(value) {
+      var parsedValue = angular.isDefined(value) ? Date.parse(value) : null;
+
+      // `parsedValue` is the time since epoch if valid or `NaN` if invalid.
+      if (!isNaN(parsedValue) && angular.isNumber(parsedValue)) {
+        value = new Date(parsedValue);
+      }
+
       if (value && !(value instanceof Date)) {
-        throw Error('The ng-model for md-datepicker must be a Date instance. ' +
-            'Currently the model is a: ' + (typeof value));
+        throw Error(
+          'The ng-model for md-datepicker must be a Date instance or a value ' +
+          'that can be parsed into a date. Currently the model is of type: ' + typeof value
+        );
       }
 
       self.onExternalChange(value);
@@ -69245,7 +69465,7 @@ function MdContactChips($mdTheming, $mdUtil) {
     ngModelCtrl.$viewChangeListeners.unshift(angular.bind(this, this.updateErrorState));
 
     // Forwards any events from the input to the root element. This is necessary to get `updateOn`
-    // working for events that don't bubble (e.g. 'blur') since Angular binds the handlers to
+    // working for events that don't bubble (e.g. 'blur') since AngularJS binds the handlers to
     // the `<md-datepicker>`.
     var updateOn = self.$mdUtil.getModelOption(ngModelCtrl, 'updateOn');
 
@@ -69674,7 +69894,7 @@ function MdContactChips($mdTheming, $mdUtil) {
 
   /**
    * Sets the ng-model value by first converting the date object into a strng. Converting it
-   * is necessary, in order to pass Angular's `input[type="date"]` validations. Angular turns
+   * is necessary, in order to pass AngularJS's `input[type="date"]` validations. AngularJS turns
    * the value into a Date object afterwards, before setting it on the model.
    * @param {Date=} value Date to be set as the model value.
    */
@@ -69922,20 +70142,29 @@ function mdIconDirective($mdIcon, $mdTheming, $mdAria, $sce) {
     // If using a font-icon, then the textual name of the icon itself
     // provides the aria-label.
 
-    var label = attr.alt || attr.mdFontIcon || attr.mdSvgIcon || element.text();
     var attrName = attr.$normalize(attr.$attr.mdSvgIcon || attr.$attr.mdSvgSrc || '');
 
-    if ( !attr['aria-label'] ) {
+    /* Provide a default accessibility role of img */
+    if (!attr.role) {
+      $mdAria.expect(element, 'role', 'img');
+      /* manually update attr variable */
+      attr.role = 'img';
+    }
 
-      if (label !== '' && !parentsHaveText() ) {
-
-        $mdAria.expect(element, 'aria-label', label);
-        $mdAria.expect(element, 'role', 'img');
-
-      } else if ( !element.text() ) {
-        // If not a font-icon with ligature, then
-        // hide from the accessibility layer.
-
+    /* Don't process ARIA if already valid */
+    if ( attr.role === "img" && !attr.ariaHidden && !$mdAria.hasAriaLabel(element) ) {
+      var iconName;
+      if (attr.alt) {
+        /* Use alt text by default if available */
+        $mdAria.expect(element, 'aria-label', attr.alt);
+      } else if ($mdAria.parentHasAriaLabel(element, 2)) {
+        /* Parent has ARIA so we will assume it will describe the image */
+        $mdAria.expect(element, 'aria-hidden', 'true');
+      } else if (iconName = (attr.mdFontIcon || attr.mdSvgIcon || element.text())) {
+        /* Use icon name as aria-label */
+        $mdAria.expect(element, 'aria-label', iconName);
+      } else {
+        /* No label found */
         $mdAria.expect(element, 'aria-hidden', 'true');
       }
     }
@@ -69951,19 +70180,7 @@ function mdIconDirective($mdIcon, $mdTheming, $mdAria, $sce) {
             element.append(svg);
           });
         }
-
       });
-    }
-
-    function parentsHaveText() {
-      var parent = element.parent();
-      if (parent.attr('aria-label') || parent.text()) {
-        return true;
-      }
-      else if(parent.parent().attr('aria-label') || parent.parent().text()) {
-        return true;
-      }
-      return false;
     }
 
     function prepareForFontIcon() {
@@ -70207,7 +70424,7 @@ MdIconService.$inject = ["config", "$templateRequest", "$q", "$log", "$mdUtil", 
  * @name $mdIconProvider#defaultFontSet
  *
  * @description
- * When using Font-Icons, Angular Material assumes the the Material Design icons will be used and automatically
+ * When using Font-Icons, AngularJS Material assumes the the Material Design icons will be used and automatically
  * configures the default font-set == 'material-icons'. Note that the font-set references the font-icon library
  * class style that should be applied to the `<md-icon>`.
  *
@@ -71003,7 +71220,7 @@ function MenuController($mdMenu, $attrs, $element, $scope, $mdUtil, $timeout, $r
  * ### Preventing close
  *
  * Sometimes you would like to be able to click on a menu item without having the menu
- * close. To do this, ngMaterial exposes the `md-prevent-menu-close` attribute which
+ * close. To do this, AngularJS Material exposes the `md-prevent-menu-close` attribute which
  * can be added to a button inside a menu to stop the menu from automatically closing.
  * You can then close the menu either by using `$mdMenu.close()` in the template,
  * or programatically by injecting `$mdMenu` and calling `$mdMenu.hide()`.
@@ -72787,7 +73004,7 @@ function MdProgressCircularProvider() {
  * @restrict E
  *
  * @description
- * Use the `<md-tab>` a nested directive used within `<md-tabs>` to specify a tab with a **label** and optional *view content*.
+ * The `<md-tab>` is a nested directive used within `<md-tabs>` to specify a tab with a **label** and optional *view content*.
  *
  * If the `label` attribute is not specified, then an optional `<md-tab-label>` tag can be used to specify more
  * complex tab header markup. If neither the **label** nor the **md-tab-label** are specified, then the nested
@@ -73005,14 +73222,14 @@ function MdTabsController ($scope, $element, $window, $mdConstant, $mdTabInkRipp
   ctrl.updateTabOrder     = $mdUtil.debounce(updateTabOrder, 100);
   ctrl.getFocusedTabId    = getFocusedTabId;
 
-  // For Angular 1.4 and older, where there are no lifecycle hooks but bindings are pre-assigned,
+  // For AngularJS 1.4 and older, where there are no lifecycle hooks but bindings are pre-assigned,
   // manually call the $onInit hook.
   if (angular.version.major === 1 && angular.version.minor <= 4) {
     this.$onInit();
   }
 
   /**
-   * Angular Lifecycle hook for newer Angular versions.
+   * AngularJS Lifecycle hook for newer AngularJS versions.
    * Bindings are not guaranteed to have been assigned in the controller, but they are in the $onInit hook.
    */
   function $onInit() {
@@ -73103,7 +73320,7 @@ function MdTabsController ($scope, $element, $window, $mdConstant, $mdTabInkRipp
   }
 
   /**
-   * Creates a one-way binding manually rather than relying on Angular's isolated scope
+   * Creates a one-way binding manually rather than relying on AngularJS's isolated scope
    * @param key
    * @param handler
    */
@@ -74009,7 +74226,7 @@ function MdTabs ($$mdSvgRegistry) {
                       '\'md-disabled\':  tab.scope.disabled ' +
                   '}" ' +
                   'ng-disabled="tab.scope.disabled" ' +
-                  'md-swipe-left="$mdTabsCtrl.nextPage()" ' +
+                  'md-swipe-left="$mdTabsCtrl.nextPage()" md-swipe-touch-action="pan-y" ' +
                   'md-swipe-right="$mdTabsCtrl.previousPage()" ' +
                   'md-tabs-template="::tab.label" ' +
                   'md-scope="::tab.parent"></md-tab-item> ' +
@@ -74039,6 +74256,7 @@ function MdTabs ($$mdSvgRegistry) {
               'aria-labelledby="tab-item-{{::tab.id}}" ' +
               'md-swipe-left="$mdTabsCtrl.swipeContent && $mdTabsCtrl.incrementIndex(1)" ' +
               'md-swipe-right="$mdTabsCtrl.swipeContent && $mdTabsCtrl.incrementIndex(-1)" ' +
+              'md-swipe-touch-action="pan-y" ' +
               'ng-if="tab.hasContent" ' +
               'ng-repeat="(index, tab) in $mdTabsCtrl.tabs" ' +
               'ng-class="{ ' +
@@ -74170,3431 +74388,8 @@ function MdTabsTemplate ($compile, $mdUtil) {
 
 })();
 (function(){ 
-angular.module("material.core").constant("$MD_THEME_CSS", "md-autocomplete.md-THEME_NAME-theme{background:\"{{background-A100}}\"}md-autocomplete.md-THEME_NAME-theme[disabled]:not([md-floating-label]){background:\"{{background-100}}\"}md-autocomplete.md-THEME_NAME-theme button md-icon path{fill:\"{{background-600}}\"}md-autocomplete.md-THEME_NAME-theme button:after{background:\"{{background-600-0.3}}\"}.md-autocomplete-suggestions-container.md-THEME_NAME-theme{background:\"{{background-A100}}\"}.md-autocomplete-suggestions-container.md-THEME_NAME-theme li{color:\"{{background-900}}\"}.md-autocomplete-suggestions-container.md-THEME_NAME-theme li .highlight{color:\"{{background-600}}\"}.md-autocomplete-suggestions-container.md-THEME_NAME-theme li.selected,.md-autocomplete-suggestions-container.md-THEME_NAME-theme li:hover{background:\"{{background-200}}\"}md-backdrop{background-color:\"{{background-900-0.0}}\"}md-backdrop.md-opaque.md-THEME_NAME-theme{background-color:\"{{background-900-1.0}}\"}md-bottom-sheet.md-THEME_NAME-theme{background-color:\"{{background-50}}\";border-top-color:\"{{background-300}}\"}md-bottom-sheet.md-THEME_NAME-theme.md-list md-list-item{color:\"{{foreground-1}}\"}md-bottom-sheet.md-THEME_NAME-theme .md-subheader{background-color:\"{{background-50}}\";color:\"{{foreground-1}}\"}.md-button.md-THEME_NAME-theme:not([disabled]).md-focused,.md-button.md-THEME_NAME-theme:not([disabled]):hover{background-color:\"{{background-500-0.2}}\"}.md-button.md-THEME_NAME-theme:not([disabled]).md-icon-button:hover{background-color:transparent}.md-button.md-THEME_NAME-theme.md-fab md-icon{color:\"{{accent-contrast}}\"}.md-button.md-THEME_NAME-theme.md-primary{color:\"{{primary-color}}\"}.md-button.md-THEME_NAME-theme.md-primary.md-fab,.md-button.md-THEME_NAME-theme.md-primary.md-raised{color:\"{{primary-contrast}}\";background-color:\"{{primary-color}}\"}.md-button.md-THEME_NAME-theme.md-primary.md-fab:not([disabled]) md-icon,.md-button.md-THEME_NAME-theme.md-primary.md-raised:not([disabled]) md-icon{color:\"{{primary-contrast}}\"}.md-button.md-THEME_NAME-theme.md-primary.md-fab:not([disabled]).md-focused,.md-button.md-THEME_NAME-theme.md-primary.md-fab:not([disabled]):hover,.md-button.md-THEME_NAME-theme.md-primary.md-raised:not([disabled]).md-focused,.md-button.md-THEME_NAME-theme.md-primary.md-raised:not([disabled]):hover{background-color:\"{{primary-600}}\"}.md-button.md-THEME_NAME-theme.md-primary:not([disabled]) md-icon{color:\"{{primary-color}}\"}.md-button.md-THEME_NAME-theme.md-fab{background-color:\"{{accent-color}}\";color:\"{{accent-contrast}}\"}.md-button.md-THEME_NAME-theme.md-fab:not([disabled]) .md-icon{color:\"{{accent-contrast}}\"}.md-button.md-THEME_NAME-theme.md-fab:not([disabled]).md-focused,.md-button.md-THEME_NAME-theme.md-fab:not([disabled]):hover{background-color:\"{{accent-A700}}\"}.md-button.md-THEME_NAME-theme.md-raised{color:\"{{background-900}}\";background-color:\"{{background-50}}\"}.md-button.md-THEME_NAME-theme.md-raised:not([disabled]) md-icon{color:\"{{background-900}}\"}.md-button.md-THEME_NAME-theme.md-raised:not([disabled]):hover{background-color:\"{{background-50}}\"}.md-button.md-THEME_NAME-theme.md-raised:not([disabled]).md-focused{background-color:\"{{background-200}}\"}.md-button.md-THEME_NAME-theme.md-warn{color:\"{{warn-color}}\"}.md-button.md-THEME_NAME-theme.md-warn.md-fab,.md-button.md-THEME_NAME-theme.md-warn.md-raised{color:\"{{warn-contrast}}\";background-color:\"{{warn-color}}\"}.md-button.md-THEME_NAME-theme.md-warn.md-fab:not([disabled]) md-icon,.md-button.md-THEME_NAME-theme.md-warn.md-raised:not([disabled]) md-icon{color:\"{{warn-contrast}}\"}.md-button.md-THEME_NAME-theme.md-warn.md-fab:not([disabled]).md-focused,.md-button.md-THEME_NAME-theme.md-warn.md-fab:not([disabled]):hover,.md-button.md-THEME_NAME-theme.md-warn.md-raised:not([disabled]).md-focused,.md-button.md-THEME_NAME-theme.md-warn.md-raised:not([disabled]):hover{background-color:\"{{warn-600}}\"}.md-button.md-THEME_NAME-theme.md-warn:not([disabled]) md-icon{color:\"{{warn-color}}\"}.md-button.md-THEME_NAME-theme.md-accent{color:\"{{accent-color}}\"}.md-button.md-THEME_NAME-theme.md-accent.md-fab,.md-button.md-THEME_NAME-theme.md-accent.md-raised{color:\"{{accent-contrast}}\";background-color:\"{{accent-color}}\"}.md-button.md-THEME_NAME-theme.md-accent.md-fab:not([disabled]) md-icon,.md-button.md-THEME_NAME-theme.md-accent.md-raised:not([disabled]) md-icon{color:\"{{accent-contrast}}\"}.md-button.md-THEME_NAME-theme.md-accent.md-fab:not([disabled]).md-focused,.md-button.md-THEME_NAME-theme.md-accent.md-fab:not([disabled]):hover,.md-button.md-THEME_NAME-theme.md-accent.md-raised:not([disabled]).md-focused,.md-button.md-THEME_NAME-theme.md-accent.md-raised:not([disabled]):hover{background-color:\"{{accent-A700}}\"}.md-button.md-THEME_NAME-theme.md-accent:not([disabled]) md-icon{color:\"{{accent-color}}\"}.md-button.md-THEME_NAME-theme.md-accent[disabled],.md-button.md-THEME_NAME-theme.md-fab[disabled],.md-button.md-THEME_NAME-theme.md-raised[disabled],.md-button.md-THEME_NAME-theme.md-warn[disabled],.md-button.md-THEME_NAME-theme[disabled]{color:\"{{foreground-3}}\";cursor:default}.md-button.md-THEME_NAME-theme.md-accent[disabled] md-icon,.md-button.md-THEME_NAME-theme.md-fab[disabled] md-icon,.md-button.md-THEME_NAME-theme.md-raised[disabled] md-icon,.md-button.md-THEME_NAME-theme.md-warn[disabled] md-icon,.md-button.md-THEME_NAME-theme[disabled] md-icon{color:\"{{foreground-3}}\"}.md-button.md-THEME_NAME-theme.md-fab[disabled],.md-button.md-THEME_NAME-theme.md-raised[disabled]{background-color:\"{{foreground-4}}\"}.md-button.md-THEME_NAME-theme[disabled]{background-color:transparent}._md a.md-THEME_NAME-theme:not(.md-button).md-primary{color:\"{{primary-color}}\"}._md a.md-THEME_NAME-theme:not(.md-button).md-primary:hover{color:\"{{primary-700}}\"}._md a.md-THEME_NAME-theme:not(.md-button).md-accent:hover{color:\"{{accent-700}}\"}._md a.md-THEME_NAME-theme:not(.md-button).md-accent{color:\"{{accent-color}}\"}._md a.md-THEME_NAME-theme:not(.md-button).md-accent:hover{color:\"{{accent-A700}}\"}._md a.md-THEME_NAME-theme:not(.md-button).md-warn{color:\"{{warn-color}}\"}._md a.md-THEME_NAME-theme:not(.md-button).md-warn:hover{color:\"{{warn-700}}\"}md-card.md-THEME_NAME-theme{color:\"{{foreground-1}}\";background-color:\"{{background-hue-1}}\";border-radius:2px}md-card.md-THEME_NAME-theme .md-card-image{border-radius:2px 2px 0 0}md-card.md-THEME_NAME-theme md-card-header md-card-avatar md-icon{color:\"{{background-color}}\";background-color:\"{{foreground-3}}\"}md-card.md-THEME_NAME-theme md-card-header md-card-header-text .md-subhead,md-card.md-THEME_NAME-theme md-card-title md-card-title-text:not(:only-child) .md-subhead{color:\"{{foreground-2}}\"}md-checkbox.md-THEME_NAME-theme .md-ripple{color:\"{{accent-A700}}\"}md-checkbox.md-THEME_NAME-theme.md-checked .md-ripple{color:\"{{background-600}}\"}md-checkbox.md-THEME_NAME-theme.md-checked.md-focused .md-container:before{background-color:\"{{accent-color-0.26}}\"}md-checkbox.md-THEME_NAME-theme .md-ink-ripple{color:\"{{foreground-2}}\"}md-checkbox.md-THEME_NAME-theme.md-checked .md-ink-ripple{color:\"{{accent-color-0.87}}\"}md-checkbox.md-THEME_NAME-theme:not(.md-checked) .md-icon{border-color:\"{{foreground-2}}\"}md-checkbox.md-THEME_NAME-theme.md-checked .md-icon{background-color:\"{{accent-color-0.87}}\"}md-checkbox.md-THEME_NAME-theme.md-checked .md-icon:after{border-color:\"{{accent-contrast-0.87}}\"}md-checkbox.md-THEME_NAME-theme:not([disabled]).md-primary .md-ripple{color:\"{{primary-600}}\"}md-checkbox.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked .md-ripple{color:\"{{background-600}}\"}md-checkbox.md-THEME_NAME-theme:not([disabled]).md-primary .md-ink-ripple{color:\"{{foreground-2}}\"}md-checkbox.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked .md-ink-ripple{color:\"{{primary-color-0.87}}\"}md-checkbox.md-THEME_NAME-theme:not([disabled]).md-primary:not(.md-checked) .md-icon{border-color:\"{{foreground-2}}\"}md-checkbox.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked .md-icon{background-color:\"{{primary-color-0.87}}\"}md-checkbox.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked.md-focused .md-container:before{background-color:\"{{primary-color-0.26}}\"}md-checkbox.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked .md-icon:after{border-color:\"{{primary-contrast-0.87}}\"}md-checkbox.md-THEME_NAME-theme:not([disabled]).md-primary .md-indeterminate[disabled] .md-container{color:\"{{foreground-3}}\"}md-checkbox.md-THEME_NAME-theme:not([disabled]).md-warn .md-ripple{color:\"{{warn-600}}\"}md-checkbox.md-THEME_NAME-theme:not([disabled]).md-warn .md-ink-ripple{color:\"{{foreground-2}}\"}md-checkbox.md-THEME_NAME-theme:not([disabled]).md-warn.md-checked .md-ink-ripple{color:\"{{warn-color-0.87}}\"}md-checkbox.md-THEME_NAME-theme:not([disabled]).md-warn:not(.md-checked) .md-icon{border-color:\"{{foreground-2}}\"}md-checkbox.md-THEME_NAME-theme:not([disabled]).md-warn.md-checked .md-icon{background-color:\"{{warn-color-0.87}}\"}md-checkbox.md-THEME_NAME-theme:not([disabled]).md-warn.md-checked.md-focused:not([disabled]) .md-container:before{background-color:\"{{warn-color-0.26}}\"}md-checkbox.md-THEME_NAME-theme:not([disabled]).md-warn.md-checked .md-icon:after{border-color:\"{{background-200}}\"}md-checkbox.md-THEME_NAME-theme[disabled]:not(.md-checked) .md-icon{border-color:\"{{foreground-3}}\"}md-checkbox.md-THEME_NAME-theme[disabled].md-checked .md-icon{background-color:\"{{foreground-3}}\"}md-checkbox.md-THEME_NAME-theme[disabled].md-checked .md-icon:after{border-color:\"{{background-200}}\"}md-checkbox.md-THEME_NAME-theme[disabled] .md-icon:after{border-color:\"{{foreground-3}}\"}md-checkbox.md-THEME_NAME-theme[disabled] .md-label{color:\"{{foreground-3}}\"}md-chips.md-THEME_NAME-theme .md-chips{box-shadow:0 1px \"{{foreground-4}}\"}md-chips.md-THEME_NAME-theme .md-chips.md-focused{box-shadow:0 2px \"{{primary-color}}\"}md-chips.md-THEME_NAME-theme .md-chips .md-chip-input-container input{color:\"{{foreground-1}}\"}md-chips.md-THEME_NAME-theme .md-chips .md-chip-input-container input:-moz-placeholder,md-chips.md-THEME_NAME-theme .md-chips .md-chip-input-container input::-moz-placeholder{color:\"{{foreground-3}}\"}md-chips.md-THEME_NAME-theme .md-chips .md-chip-input-container input:-ms-input-placeholder{color:\"{{foreground-3}}\"}md-chips.md-THEME_NAME-theme .md-chips .md-chip-input-container input::-webkit-input-placeholder{color:\"{{foreground-3}}\"}md-chips.md-THEME_NAME-theme md-chip{background:\"{{background-300}}\";color:\"{{background-800}}\"}md-chips.md-THEME_NAME-theme md-chip md-icon{color:\"{{background-700}}\"}md-chips.md-THEME_NAME-theme md-chip.md-focused{background:\"{{primary-color}}\";color:\"{{primary-contrast}}\"}md-chips.md-THEME_NAME-theme md-chip.md-focused md-icon{color:\"{{primary-contrast}}\"}md-chips.md-THEME_NAME-theme md-chip._md-chip-editing{background:transparent;color:\"{{background-800}}\"}md-chips.md-THEME_NAME-theme md-chip-remove .md-button md-icon path{fill:\"{{background-500}}\"}.md-contact-suggestion span.md-contact-email{color:\"{{background-400}}\"}md-content.md-THEME_NAME-theme{color:\"{{foreground-1}}\";background-color:\"{{background-default}}\"}.md-calendar.md-THEME_NAME-theme{background:\"{{background-A100}}\";color:\"{{background-A200-0.87}}\"}.md-calendar.md-THEME_NAME-theme tr:last-child td{border-bottom-color:\"{{background-200}}\"}.md-THEME_NAME-theme .md-calendar-day-header{background:\"{{background-300}}\";color:\"{{background-A200-0.87}}\"}.md-THEME_NAME-theme .md-calendar-date.md-calendar-date-today .md-calendar-date-selection-indicator{border:1px solid \"{{primary-500}}\"}.md-THEME_NAME-theme .md-calendar-date.md-calendar-date-today.md-calendar-date-disabled{color:\"{{primary-500-0.6}}\"}.md-calendar-date.md-focus .md-THEME_NAME-theme .md-calendar-date-selection-indicator,.md-THEME_NAME-theme .md-calendar-date-selection-indicator:hover{background:\"{{background-300}}\"}.md-THEME_NAME-theme .md-calendar-date.md-calendar-selected-date .md-calendar-date-selection-indicator,.md-THEME_NAME-theme .md-calendar-date.md-focus.md-calendar-selected-date .md-calendar-date-selection-indicator{background:\"{{primary-500}}\";color:\"{{primary-500-contrast}}\";border-color:transparent}.md-THEME_NAME-theme .md-calendar-date-disabled,.md-THEME_NAME-theme .md-calendar-month-label-disabled{color:\"{{background-A200-0.435}}\"}.md-THEME_NAME-theme .md-datepicker-input{color:\"{{foreground-1}}\"}.md-THEME_NAME-theme .md-datepicker-input:-moz-placeholder,.md-THEME_NAME-theme .md-datepicker-input::-moz-placeholder{color:\"{{foreground-3}}\"}.md-THEME_NAME-theme .md-datepicker-input:-ms-input-placeholder{color:\"{{foreground-3}}\"}.md-THEME_NAME-theme .md-datepicker-input::-webkit-input-placeholder{color:\"{{foreground-3}}\"}.md-THEME_NAME-theme .md-datepicker-input-container{border-bottom-color:\"{{foreground-4}}\"}.md-THEME_NAME-theme .md-datepicker-input-container.md-datepicker-focused{border-bottom-color:\"{{primary-color}}\"}.md-accent .md-THEME_NAME-theme .md-datepicker-input-container.md-datepicker-focused{border-bottom-color:\"{{accent-color}}\"}.md-THEME_NAME-theme .md-datepicker-input-container.md-datepicker-invalid,.md-warn .md-THEME_NAME-theme .md-datepicker-input-container.md-datepicker-focused{border-bottom-color:\"{{warn-A700}}\"}.md-THEME_NAME-theme .md-datepicker-calendar-pane{border-color:\"{{background-hue-1}}\"}.md-THEME_NAME-theme .md-datepicker-triangle-button .md-datepicker-expand-triangle{border-top-color:\"{{foreground-2}}\"}.md-THEME_NAME-theme .md-datepicker-open .md-datepicker-calendar-icon{color:\"{{primary-color}}\"}.md-accent .md-THEME_NAME-theme .md-datepicker-open .md-datepicker-calendar-icon,.md-THEME_NAME-theme .md-datepicker-open.md-accent .md-datepicker-calendar-icon{color:\"{{accent-color}}\"}.md-THEME_NAME-theme .md-datepicker-open.md-warn .md-datepicker-calendar-icon,.md-warn .md-THEME_NAME-theme .md-datepicker-open .md-datepicker-calendar-icon{color:\"{{warn-A700}}\"}.md-THEME_NAME-theme .md-datepicker-calendar{background:\"{{background-A100}}\"}.md-THEME_NAME-theme .md-datepicker-input-mask-opaque{box-shadow:0 0 0 9999px \"{{background-hue-1}}\"}.md-THEME_NAME-theme .md-datepicker-open .md-datepicker-input-container{background:\"{{background-hue-1}}\"}md-dialog.md-THEME_NAME-theme{border-radius:4px;background-color:\"{{background-hue-1}}\";color:\"{{foreground-1}}\"}md-dialog.md-THEME_NAME-theme.md-content-overflow .md-actions,md-dialog.md-THEME_NAME-theme.md-content-overflow md-dialog-actions,md-divider.md-THEME_NAME-theme{border-top-color:\"{{foreground-4}}\"}.layout-gt-lg-row>md-divider.md-THEME_NAME-theme,.layout-gt-md-row>md-divider.md-THEME_NAME-theme,.layout-gt-sm-row>md-divider.md-THEME_NAME-theme,.layout-gt-xs-row>md-divider.md-THEME_NAME-theme,.layout-lg-row>md-divider.md-THEME_NAME-theme,.layout-md-row>md-divider.md-THEME_NAME-theme,.layout-row>md-divider.md-THEME_NAME-theme,.layout-sm-row>md-divider.md-THEME_NAME-theme,.layout-xl-row>md-divider.md-THEME_NAME-theme,.layout-xs-row>md-divider.md-THEME_NAME-theme{border-right-color:\"{{foreground-4}}\"}md-icon.md-THEME_NAME-theme{color:\"{{foreground-2}}\"}md-icon.md-THEME_NAME-theme.md-primary{color:\"{{primary-color}}\"}md-icon.md-THEME_NAME-theme.md-accent{color:\"{{accent-color}}\"}md-icon.md-THEME_NAME-theme.md-warn{color:\"{{warn-color}}\"}md-input-container.md-THEME_NAME-theme .md-input{color:\"{{foreground-1}}\";border-color:\"{{foreground-4}}\"}md-input-container.md-THEME_NAME-theme .md-input:-moz-placeholder,md-input-container.md-THEME_NAME-theme .md-input::-moz-placeholder{color:\"{{foreground-3}}\"}md-input-container.md-THEME_NAME-theme .md-input:-ms-input-placeholder{color:\"{{foreground-3}}\"}md-input-container.md-THEME_NAME-theme .md-input::-webkit-input-placeholder{color:\"{{foreground-3}}\"}md-input-container.md-THEME_NAME-theme>md-icon{color:\"{{foreground-1}}\"}md-input-container.md-THEME_NAME-theme .md-placeholder,md-input-container.md-THEME_NAME-theme label{color:\"{{foreground-3}}\"}md-input-container.md-THEME_NAME-theme label.md-required:after{color:\"{{warn-A700}}\"}md-input-container.md-THEME_NAME-theme:not(.md-input-focused):not(.md-input-invalid) label.md-required:after{color:\"{{foreground-2}}\"}md-input-container.md-THEME_NAME-theme .md-input-message-animation,md-input-container.md-THEME_NAME-theme .md-input-messages-animation{color:\"{{warn-A700}}\"}md-input-container.md-THEME_NAME-theme .md-input-message-animation .md-char-counter,md-input-container.md-THEME_NAME-theme .md-input-messages-animation .md-char-counter{color:\"{{foreground-1}}\"}md-input-container.md-THEME_NAME-theme.md-input-focused .md-input:-moz-placeholder,md-input-container.md-THEME_NAME-theme.md-input-focused .md-input::-moz-placeholder{color:\"{{foreground-2}}\"}md-input-container.md-THEME_NAME-theme.md-input-focused .md-input:-ms-input-placeholder{color:\"{{foreground-2}}\"}md-input-container.md-THEME_NAME-theme.md-input-focused .md-input::-webkit-input-placeholder{color:\"{{foreground-2}}\"}md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-has-value label{color:\"{{foreground-2}}\"}md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-focused .md-input,md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-resized .md-input{border-color:\"{{primary-color}}\"}md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-focused label,md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-focused md-icon{color:\"{{primary-color}}\"}md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-focused.md-accent .md-input{border-color:\"{{accent-color}}\"}md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-focused.md-accent label,md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-focused.md-accent md-icon{color:\"{{accent-color}}\"}md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-focused.md-warn .md-input{border-color:\"{{warn-A700}}\"}md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-focused.md-warn label,md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-focused.md-warn md-icon{color:\"{{warn-A700}}\"}md-input-container.md-THEME_NAME-theme.md-input-invalid .md-input{border-color:\"{{warn-A700}}\"}md-input-container.md-THEME_NAME-theme.md-input-invalid .md-char-counter,md-input-container.md-THEME_NAME-theme.md-input-invalid .md-input-message-animation,md-input-container.md-THEME_NAME-theme.md-input-invalid label{color:\"{{warn-A700}}\"}[disabled] md-input-container.md-THEME_NAME-theme .md-input,md-input-container.md-THEME_NAME-theme .md-input[disabled]{border-bottom-color:transparent;color:\"{{foreground-3}}\";background-image:linear-gradient(90deg,\"{{foreground-3}}\" 0,\"{{foreground-3}}\" 33%,transparent 0);background-image:-ms-linear-gradient(left,transparent 0,\"{{foreground-3}}\" 100%)}md-list.md-THEME_NAME-theme md-list-item.md-2-line .md-list-item-text h3,md-list.md-THEME_NAME-theme md-list-item.md-2-line .md-list-item-text h4,md-list.md-THEME_NAME-theme md-list-item.md-3-line .md-list-item-text h3,md-list.md-THEME_NAME-theme md-list-item.md-3-line .md-list-item-text h4{color:\"{{foreground-1}}\"}md-list.md-THEME_NAME-theme md-list-item.md-2-line .md-list-item-text p,md-list.md-THEME_NAME-theme md-list-item.md-3-line .md-list-item-text p{color:\"{{foreground-2}}\"}md-list.md-THEME_NAME-theme .md-proxy-focus.md-focused div.md-no-style{background-color:\"{{background-100}}\"}md-list.md-THEME_NAME-theme md-list-item .md-avatar-icon{background-color:\"{{foreground-3}}\";color:\"{{background-color}}\"}md-list.md-THEME_NAME-theme md-list-item>md-icon{color:\"{{foreground-2}}\"}md-list.md-THEME_NAME-theme md-list-item>md-icon.md-highlight{color:\"{{primary-color}}\"}md-list.md-THEME_NAME-theme md-list-item>md-icon.md-highlight.md-accent{color:\"{{accent-color}}\"}md-menu-content.md-THEME_NAME-theme{background-color:\"{{background-A100}}\"}md-menu-content.md-THEME_NAME-theme md-menu-item{color:\"{{background-A200-0.87}}\"}md-menu-content.md-THEME_NAME-theme md-menu-item md-icon{color:\"{{background-A200-0.54}}\"}md-menu-content.md-THEME_NAME-theme md-menu-item .md-button[disabled],md-menu-content.md-THEME_NAME-theme md-menu-item .md-button[disabled] md-icon{color:\"{{background-A200-0.25}}\"}md-menu-content.md-THEME_NAME-theme md-menu-divider{background-color:\"{{background-A200-0.11}}\"}md-menu-bar.md-THEME_NAME-theme>button.md-button{color:\"{{foreground-2}}\";border-radius:2px}md-menu-bar.md-THEME_NAME-theme md-menu.md-open>button,md-menu-bar.md-THEME_NAME-theme md-menu>button:focus{outline:none;background:\"{{background-200}}\"}md-menu-bar.md-THEME_NAME-theme.md-open:not(.md-keyboard-mode) md-menu:hover>button{background-color:\"{{ background-500-0.2}}\"}md-menu-bar.md-THEME_NAME-theme:not(.md-keyboard-mode):not(.md-open) md-menu button:focus,md-menu-bar.md-THEME_NAME-theme:not(.md-keyboard-mode):not(.md-open) md-menu button:hover{background:transparent}md-menu-content.md-THEME_NAME-theme .md-menu>.md-button:after{color:\"{{background-A200-0.54}}\"}md-menu-content.md-THEME_NAME-theme .md-menu.md-open>.md-button{background-color:\"{{ background-500-0.2}}\"}md-toolbar.md-THEME_NAME-theme.md-menu-toolbar{background-color:\"{{background-A100}}\";color:\"{{background-A200}}\"}md-toolbar.md-THEME_NAME-theme.md-menu-toolbar md-toolbar-filler{background-color:\"{{primary-color}}\";color:\"{{background-A100-0.87}}\"}md-toolbar.md-THEME_NAME-theme.md-menu-toolbar md-toolbar-filler md-icon{color:\"{{background-A100-0.87}}\"}._md-panel-backdrop.md-THEME_NAME-theme{background-color:\"{{background-900-1.0}}\"}md-nav-bar.md-THEME_NAME-theme .md-nav-bar{background-color:transparent;border-color:\"{{foreground-4}}\"}md-nav-bar.md-THEME_NAME-theme .md-button._md-nav-button.md-unselected{color:\"{{foreground-2}}\"}md-nav-bar.md-THEME_NAME-theme md-nav-ink-bar{color:\"{{accent-color}}\";background:\"{{accent-color}}\"}md-progress-circular.md-THEME_NAME-theme path{stroke:\"{{primary-color}}\"}md-progress-circular.md-THEME_NAME-theme.md-warn path{stroke:\"{{warn-color}}\"}md-progress-circular.md-THEME_NAME-theme.md-accent path{stroke:\"{{accent-color}}\"}md-progress-linear.md-THEME_NAME-theme .md-container{background-color:\"{{primary-100}}\"}md-progress-linear.md-THEME_NAME-theme .md-bar{background-color:\"{{primary-color}}\"}md-progress-linear.md-THEME_NAME-theme.md-warn .md-container{background-color:\"{{warn-100}}\"}md-progress-linear.md-THEME_NAME-theme.md-warn .md-bar{background-color:\"{{warn-color}}\"}md-progress-linear.md-THEME_NAME-theme.md-accent .md-container{background-color:\"{{accent-100}}\"}md-progress-linear.md-THEME_NAME-theme.md-accent .md-bar{background-color:\"{{accent-color}}\"}md-progress-linear.md-THEME_NAME-theme[md-mode=buffer].md-warn .md-bar1{background-color:\"{{warn-100}}\"}md-progress-linear.md-THEME_NAME-theme[md-mode=buffer].md-warn .md-dashed:before{background:radial-gradient(\"{{warn-100}}\" 0,\"{{warn-100}}\" 16%,transparent 42%)}md-progress-linear.md-THEME_NAME-theme[md-mode=buffer].md-accent .md-bar1{background-color:\"{{accent-100}}\"}md-progress-linear.md-THEME_NAME-theme[md-mode=buffer].md-accent .md-dashed:before{background:radial-gradient(\"{{accent-100}}\" 0,\"{{accent-100}}\" 16%,transparent 42%)}md-radio-button.md-THEME_NAME-theme .md-off{border-color:\"{{foreground-2}}\"}md-radio-button.md-THEME_NAME-theme .md-on{background-color:\"{{accent-color-0.87}}\"}md-radio-button.md-THEME_NAME-theme.md-checked .md-off{border-color:\"{{accent-color-0.87}}\"}md-radio-button.md-THEME_NAME-theme.md-checked .md-ink-ripple{color:\"{{accent-color-0.87}}\"}md-radio-button.md-THEME_NAME-theme .md-container .md-ripple{color:\"{{accent-A700}}\"}md-radio-button.md-THEME_NAME-theme:not([disabled]).md-primary .md-on,md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-primary .md-on,md-radio-group.md-THEME_NAME-theme:not([disabled]).md-primary .md-on,md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-primary .md-on{background-color:\"{{primary-color-0.87}}\"}md-radio-button.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked .md-off,md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-primary.md-checked .md-off,md-radio-button.md-THEME_NAME-theme:not([disabled]).md-primary .md-checked .md-off,md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-primary .md-checked .md-off,md-radio-group.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked .md-off,md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-primary.md-checked .md-off,md-radio-group.md-THEME_NAME-theme:not([disabled]).md-primary .md-checked .md-off,md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-primary .md-checked .md-off{border-color:\"{{primary-color-0.87}}\"}md-radio-button.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked .md-ink-ripple,md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-primary.md-checked .md-ink-ripple,md-radio-button.md-THEME_NAME-theme:not([disabled]).md-primary .md-checked .md-ink-ripple,md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-primary .md-checked .md-ink-ripple,md-radio-group.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked .md-ink-ripple,md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-primary.md-checked .md-ink-ripple,md-radio-group.md-THEME_NAME-theme:not([disabled]).md-primary .md-checked .md-ink-ripple,md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-primary .md-checked .md-ink-ripple{color:\"{{primary-color-0.87}}\"}md-radio-button.md-THEME_NAME-theme:not([disabled]).md-primary .md-container .md-ripple,md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-primary .md-container .md-ripple,md-radio-group.md-THEME_NAME-theme:not([disabled]).md-primary .md-container .md-ripple,md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-primary .md-container .md-ripple{color:\"{{primary-600}}\"}md-radio-button.md-THEME_NAME-theme:not([disabled]).md-warn .md-on,md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-warn .md-on,md-radio-group.md-THEME_NAME-theme:not([disabled]).md-warn .md-on,md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-warn .md-on{background-color:\"{{warn-color-0.87}}\"}md-radio-button.md-THEME_NAME-theme:not([disabled]).md-warn.md-checked .md-off,md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-warn.md-checked .md-off,md-radio-button.md-THEME_NAME-theme:not([disabled]).md-warn .md-checked .md-off,md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-warn .md-checked .md-off,md-radio-group.md-THEME_NAME-theme:not([disabled]).md-warn.md-checked .md-off,md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-warn.md-checked .md-off,md-radio-group.md-THEME_NAME-theme:not([disabled]).md-warn .md-checked .md-off,md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-warn .md-checked .md-off{border-color:\"{{warn-color-0.87}}\"}md-radio-button.md-THEME_NAME-theme:not([disabled]).md-warn.md-checked .md-ink-ripple,md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-warn.md-checked .md-ink-ripple,md-radio-button.md-THEME_NAME-theme:not([disabled]).md-warn .md-checked .md-ink-ripple,md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-warn .md-checked .md-ink-ripple,md-radio-group.md-THEME_NAME-theme:not([disabled]).md-warn.md-checked .md-ink-ripple,md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-warn.md-checked .md-ink-ripple,md-radio-group.md-THEME_NAME-theme:not([disabled]).md-warn .md-checked .md-ink-ripple,md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-warn .md-checked .md-ink-ripple{color:\"{{warn-color-0.87}}\"}md-radio-button.md-THEME_NAME-theme:not([disabled]).md-warn .md-container .md-ripple,md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-warn .md-container .md-ripple,md-radio-group.md-THEME_NAME-theme:not([disabled]).md-warn .md-container .md-ripple,md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-warn .md-container .md-ripple{color:\"{{warn-600}}\"}md-radio-button.md-THEME_NAME-theme[disabled],md-radio-group.md-THEME_NAME-theme[disabled]{color:\"{{foreground-3}}\"}md-radio-button.md-THEME_NAME-theme[disabled] .md-container .md-off,md-radio-button.md-THEME_NAME-theme[disabled] .md-container .md-on,md-radio-group.md-THEME_NAME-theme[disabled] .md-container .md-off,md-radio-group.md-THEME_NAME-theme[disabled] .md-container .md-on{border-color:\"{{foreground-3}}\"}md-radio-group.md-THEME_NAME-theme .md-checked .md-ink-ripple{color:\"{{accent-color-0.26}}\"}md-radio-group.md-THEME_NAME-theme .md-checked:not([disabled]).md-primary .md-ink-ripple,md-radio-group.md-THEME_NAME-theme.md-primary .md-checked:not([disabled]) .md-ink-ripple{color:\"{{primary-color-0.26}}\"}md-radio-group.md-THEME_NAME-theme .md-checked.md-primary .md-ink-ripple{color:\"{{warn-color-0.26}}\"}md-radio-group.md-THEME_NAME-theme.md-focused:not(:empty) .md-checked .md-container:before{background-color:\"{{accent-color-0.26}}\"}md-radio-group.md-THEME_NAME-theme.md-focused:not(:empty) .md-checked.md-primary .md-container:before,md-radio-group.md-THEME_NAME-theme.md-focused:not(:empty).md-primary .md-checked .md-container:before{background-color:\"{{primary-color-0.26}}\"}md-radio-group.md-THEME_NAME-theme.md-focused:not(:empty) .md-checked.md-warn .md-container:before,md-radio-group.md-THEME_NAME-theme.md-focused:not(:empty).md-warn .md-checked .md-container:before{background-color:\"{{warn-color-0.26}}\"}md-input-container md-select.md-THEME_NAME-theme .md-select-value span:first-child:after{color:\"{{warn-A700}}\"}md-input-container:not(.md-input-focused):not(.md-input-invalid) md-select.md-THEME_NAME-theme .md-select-value span:first-child:after{color:\"{{foreground-3}}\"}md-input-container.md-input-focused:not(.md-input-has-value) md-select.md-THEME_NAME-theme .md-select-value,md-input-container.md-input-focused:not(.md-input-has-value) md-select.md-THEME_NAME-theme .md-select-value.md-select-placeholder{color:\"{{primary-color}}\"}md-input-container.md-input-invalid md-select.md-THEME_NAME-theme .md-select-value{color:\"{{warn-A700}}\"!important;border-bottom-color:\"{{warn-A700}}\"!important}md-input-container.md-input-invalid md-select.md-THEME_NAME-theme.md-no-underline .md-select-value{border-bottom-color:transparent!important}md-select.md-THEME_NAME-theme[disabled] .md-select-value{border-bottom-color:transparent;background-image:linear-gradient(90deg,\"{{foreground-3}}\" 0,\"{{foreground-3}}\" 33%,transparent 0);background-image:-ms-linear-gradient(left,transparent 0,\"{{foreground-3}}\" 100%)}md-select.md-THEME_NAME-theme .md-select-value{border-bottom-color:\"{{foreground-4}}\"}md-select.md-THEME_NAME-theme .md-select-value.md-select-placeholder{color:\"{{foreground-3}}\"}md-select.md-THEME_NAME-theme .md-select-value span:first-child:after{color:\"{{warn-A700}}\"}md-select.md-THEME_NAME-theme.md-no-underline .md-select-value{border-bottom-color:transparent!important}md-select.md-THEME_NAME-theme.ng-invalid.ng-touched .md-select-value{color:\"{{warn-A700}}\"!important;border-bottom-color:\"{{warn-A700}}\"!important}md-select.md-THEME_NAME-theme.ng-invalid.ng-touched.md-no-underline .md-select-value{border-bottom-color:transparent!important}md-select.md-THEME_NAME-theme:not([disabled]):focus .md-select-value{border-bottom-color:\"{{primary-color}}\";color:\"{{ foreground-1 }}\"}md-select.md-THEME_NAME-theme:not([disabled]):focus .md-select-value.md-select-placeholder{color:\"{{ foreground-1 }}\"}md-select.md-THEME_NAME-theme:not([disabled]):focus.md-no-underline .md-select-value{border-bottom-color:transparent!important}md-select.md-THEME_NAME-theme:not([disabled]):focus.md-accent .md-select-value{border-bottom-color:\"{{accent-color}}\"}md-select.md-THEME_NAME-theme:not([disabled]):focus.md-warn .md-select-value{border-bottom-color:\"{{warn-color}}\"}md-select.md-THEME_NAME-theme[disabled] .md-select-icon,md-select.md-THEME_NAME-theme[disabled] .md-select-value,md-select.md-THEME_NAME-theme[disabled] .md-select-value.md-select-placeholder{color:\"{{foreground-3}}\"}md-select.md-THEME_NAME-theme .md-select-icon{color:\"{{foreground-2}}\"}md-select-menu.md-THEME_NAME-theme md-content{background:\"{{background-A100}}\"}md-select-menu.md-THEME_NAME-theme md-content md-optgroup{color:\"{{background-600-0.87}}\"}md-select-menu.md-THEME_NAME-theme md-content md-option{color:\"{{background-900-0.87}}\"}md-select-menu.md-THEME_NAME-theme md-content md-option[disabled] .md-text{color:\"{{background-400-0.87}}\"}md-select-menu.md-THEME_NAME-theme md-content md-option:not([disabled]):focus,md-select-menu.md-THEME_NAME-theme md-content md-option:not([disabled]):hover{background:\"{{background-200}}\"}md-select-menu.md-THEME_NAME-theme md-content md-option[selected]{color:\"{{primary-500}}\"}md-select-menu.md-THEME_NAME-theme md-content md-option[selected]:focus{color:\"{{primary-600}}\"}md-select-menu.md-THEME_NAME-theme md-content md-option[selected].md-accent{color:\"{{accent-color}}\"}md-select-menu.md-THEME_NAME-theme md-content md-option[selected].md-accent:focus{color:\"{{accent-A700}}\"}.md-checkbox-enabled.md-THEME_NAME-theme .md-ripple{color:\"{{primary-600}}\"}.md-checkbox-enabled.md-THEME_NAME-theme[selected] .md-ripple{color:\"{{background-600}}\"}.md-checkbox-enabled.md-THEME_NAME-theme .md-ink-ripple{color:\"{{foreground-2}}\"}.md-checkbox-enabled.md-THEME_NAME-theme[selected] .md-ink-ripple{color:\"{{primary-color-0.87}}\"}.md-checkbox-enabled.md-THEME_NAME-theme:not(.md-checked) .md-icon{border-color:\"{{foreground-2}}\"}.md-checkbox-enabled.md-THEME_NAME-theme[selected] .md-icon{background-color:\"{{primary-color-0.87}}\"}.md-checkbox-enabled.md-THEME_NAME-theme[selected].md-focused .md-container:before{background-color:\"{{primary-color-0.26}}\"}.md-checkbox-enabled.md-THEME_NAME-theme[selected] .md-icon:after{border-color:\"{{primary-contrast-0.87}}\"}.md-checkbox-enabled.md-THEME_NAME-theme .md-indeterminate[disabled] .md-container{color:\"{{foreground-3}}\"}.md-checkbox-enabled.md-THEME_NAME-theme md-option .md-text{color:\"{{background-900-0.87}}\"}md-sidenav.md-THEME_NAME-theme,md-sidenav.md-THEME_NAME-theme md-content{background-color:\"{{background-hue-1}}\"}md-slider.md-THEME_NAME-theme .md-track{background-color:\"{{foreground-3}}\"}md-slider.md-THEME_NAME-theme .md-track-ticks{color:\"{{background-contrast}}\"}md-slider.md-THEME_NAME-theme .md-focus-ring{background-color:\"{{accent-A200-0.2}}\"}md-slider.md-THEME_NAME-theme .md-disabled-thumb{border-color:\"{{background-color}}\";background-color:\"{{background-color}}\"}md-slider.md-THEME_NAME-theme.md-min .md-thumb:after{background-color:\"{{background-color}}\";border-color:\"{{foreground-3}}\"}md-slider.md-THEME_NAME-theme.md-min .md-focus-ring{background-color:\"{{foreground-3-0.38}}\"}md-slider.md-THEME_NAME-theme.md-min[md-discrete] .md-thumb:after{background-color:\"{{background-contrast}}\";border-color:transparent}md-slider.md-THEME_NAME-theme.md-min[md-discrete] .md-sign{background-color:\"{{background-400}}\"}md-slider.md-THEME_NAME-theme.md-min[md-discrete] .md-sign:after{border-top-color:\"{{background-400}}\"}md-slider.md-THEME_NAME-theme.md-min[md-discrete][md-vertical] .md-sign:after{border-top-color:transparent;border-left-color:\"{{background-400}}\"}md-slider.md-THEME_NAME-theme .md-track.md-track-fill{background-color:\"{{accent-color}}\"}md-slider.md-THEME_NAME-theme .md-thumb:after{border-color:\"{{accent-color}}\";background-color:\"{{accent-color}}\"}md-slider.md-THEME_NAME-theme .md-sign{background-color:\"{{accent-color}}\"}md-slider.md-THEME_NAME-theme .md-sign:after{border-top-color:\"{{accent-color}}\"}md-slider.md-THEME_NAME-theme[md-vertical] .md-sign:after{border-top-color:transparent;border-left-color:\"{{accent-color}}\"}md-slider.md-THEME_NAME-theme .md-thumb-text{color:\"{{accent-contrast}}\"}md-slider.md-THEME_NAME-theme.md-warn .md-focus-ring{background-color:\"{{warn-200-0.38}}\"}md-slider.md-THEME_NAME-theme.md-warn .md-track.md-track-fill{background-color:\"{{warn-color}}\"}md-slider.md-THEME_NAME-theme.md-warn .md-thumb:after{border-color:\"{{warn-color}}\";background-color:\"{{warn-color}}\"}md-slider.md-THEME_NAME-theme.md-warn .md-sign{background-color:\"{{warn-color}}\"}md-slider.md-THEME_NAME-theme.md-warn .md-sign:after{border-top-color:\"{{warn-color}}\"}md-slider.md-THEME_NAME-theme.md-warn[md-vertical] .md-sign:after{border-top-color:transparent;border-left-color:\"{{warn-color}}\"}md-slider.md-THEME_NAME-theme.md-warn .md-thumb-text{color:\"{{warn-contrast}}\"}md-slider.md-THEME_NAME-theme.md-primary .md-focus-ring{background-color:\"{{primary-200-0.38}}\"}md-slider.md-THEME_NAME-theme.md-primary .md-track.md-track-fill{background-color:\"{{primary-color}}\"}md-slider.md-THEME_NAME-theme.md-primary .md-thumb:after{border-color:\"{{primary-color}}\";background-color:\"{{primary-color}}\"}md-slider.md-THEME_NAME-theme.md-primary .md-sign{background-color:\"{{primary-color}}\"}md-slider.md-THEME_NAME-theme.md-primary .md-sign:after{border-top-color:\"{{primary-color}}\"}md-slider.md-THEME_NAME-theme.md-primary[md-vertical] .md-sign:after{border-top-color:transparent;border-left-color:\"{{primary-color}}\"}md-slider.md-THEME_NAME-theme.md-primary .md-thumb-text{color:\"{{primary-contrast}}\"}md-slider.md-THEME_NAME-theme[disabled] .md-thumb:after{border-color:transparent}md-slider.md-THEME_NAME-theme[disabled]:not(.md-min) .md-thumb:after,md-slider.md-THEME_NAME-theme[disabled][md-discrete] .md-thumb:after{background-color:\"{{foreground-3}}\";border-color:transparent}md-slider.md-THEME_NAME-theme[disabled][readonly] .md-sign{background-color:\"{{background-400}}\"}md-slider.md-THEME_NAME-theme[disabled][readonly] .md-sign:after{border-top-color:\"{{background-400}}\"}md-slider.md-THEME_NAME-theme[disabled][readonly][md-vertical] .md-sign:after{border-top-color:transparent;border-left-color:\"{{background-400}}\"}md-slider.md-THEME_NAME-theme[disabled][readonly] .md-disabled-thumb{border-color:transparent;background-color:transparent}md-slider-container[disabled]>:first-child:not(md-slider),md-slider-container[disabled]>:last-child:not(md-slider){color:\"{{foreground-3}}\"}.md-subheader.md-THEME_NAME-theme{color:\"{{ foreground-2-0.23 }}\";background-color:\"{{background-default}}\"}.md-subheader.md-THEME_NAME-theme.md-primary{color:\"{{primary-color}}\"}.md-subheader.md-THEME_NAME-theme.md-accent{color:\"{{accent-color}}\"}.md-subheader.md-THEME_NAME-theme.md-warn{color:\"{{warn-color}}\"}md-switch.md-THEME_NAME-theme .md-ink-ripple{color:\"{{background-500}}\"}md-switch.md-THEME_NAME-theme .md-thumb{background-color:\"{{background-50}}\"}md-switch.md-THEME_NAME-theme .md-bar{background-color:\"{{background-500}}\"}md-switch.md-THEME_NAME-theme.md-checked .md-ink-ripple{color:\"{{accent-color}}\"}md-switch.md-THEME_NAME-theme.md-checked .md-thumb{background-color:\"{{accent-color}}\"}md-switch.md-THEME_NAME-theme.md-checked .md-bar{background-color:\"{{accent-color-0.5}}\"}md-switch.md-THEME_NAME-theme.md-checked.md-focused .md-thumb:before{background-color:\"{{accent-color-0.26}}\"}md-switch.md-THEME_NAME-theme.md-checked.md-primary .md-ink-ripple{color:\"{{primary-color}}\"}md-switch.md-THEME_NAME-theme.md-checked.md-primary .md-thumb{background-color:\"{{primary-color}}\"}md-switch.md-THEME_NAME-theme.md-checked.md-primary .md-bar{background-color:\"{{primary-color-0.5}}\"}md-switch.md-THEME_NAME-theme.md-checked.md-primary.md-focused .md-thumb:before{background-color:\"{{primary-color-0.26}}\"}md-switch.md-THEME_NAME-theme.md-checked.md-warn .md-ink-ripple{color:\"{{warn-color}}\"}md-switch.md-THEME_NAME-theme.md-checked.md-warn .md-thumb{background-color:\"{{warn-color}}\"}md-switch.md-THEME_NAME-theme.md-checked.md-warn .md-bar{background-color:\"{{warn-color-0.5}}\"}md-switch.md-THEME_NAME-theme.md-checked.md-warn.md-focused .md-thumb:before{background-color:\"{{warn-color-0.26}}\"}md-switch.md-THEME_NAME-theme[disabled] .md-thumb{background-color:\"{{background-400}}\"}md-switch.md-THEME_NAME-theme[disabled] .md-bar{background-color:\"{{foreground-4}}\"}md-toast.md-THEME_NAME-theme .md-toast-content{background-color:#323232;color:\"{{background-50}}\"}md-toast.md-THEME_NAME-theme .md-toast-content .md-button{color:\"{{background-50}}\"}md-toast.md-THEME_NAME-theme .md-toast-content .md-button.md-highlight{color:\"{{accent-color}}\"}md-toast.md-THEME_NAME-theme .md-toast-content .md-button.md-highlight.md-primary{color:\"{{primary-color}}\"}md-toast.md-THEME_NAME-theme .md-toast-content .md-button.md-highlight.md-warn{color:\"{{warn-color}}\"}md-tabs.md-THEME_NAME-theme md-tabs-wrapper{background-color:transparent;border-color:\"{{foreground-4}}\"}md-tabs.md-THEME_NAME-theme .md-paginator md-icon{color:\"{{primary-color}}\"}md-tabs.md-THEME_NAME-theme md-ink-bar{color:\"{{accent-color}}\";background:\"{{accent-color}}\"}md-tabs.md-THEME_NAME-theme .md-tab{color:\"{{foreground-2}}\"}md-tabs.md-THEME_NAME-theme .md-tab[disabled],md-tabs.md-THEME_NAME-theme .md-tab[disabled] md-icon{color:\"{{foreground-3}}\"}md-tabs.md-THEME_NAME-theme .md-tab.md-active,md-tabs.md-THEME_NAME-theme .md-tab.md-active md-icon,md-tabs.md-THEME_NAME-theme .md-tab.md-focused,md-tabs.md-THEME_NAME-theme .md-tab.md-focused md-icon{color:\"{{primary-color}}\"}md-tabs.md-THEME_NAME-theme .md-tab.md-focused{background:\"{{primary-color-0.1}}\"}md-tabs.md-THEME_NAME-theme .md-tab .md-ripple-container{color:\"{{accent-A100}}\"}md-tabs.md-THEME_NAME-theme.md-accent>md-tabs-wrapper{background-color:\"{{accent-color}}\"}md-tabs.md-THEME_NAME-theme.md-accent>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]),md-tabs.md-THEME_NAME-theme.md-accent>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]) md-icon{color:\"{{accent-A100}}\"}md-tabs.md-THEME_NAME-theme.md-accent>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-active,md-tabs.md-THEME_NAME-theme.md-accent>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-active md-icon,md-tabs.md-THEME_NAME-theme.md-accent>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused,md-tabs.md-THEME_NAME-theme.md-accent>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused md-icon{color:\"{{accent-contrast}}\"}md-tabs.md-THEME_NAME-theme.md-accent>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused{background:\"{{accent-contrast-0.1}}\"}md-tabs.md-THEME_NAME-theme.md-accent>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-ink-bar{color:\"{{primary-600-1}}\";background:\"{{primary-600-1}}\"}md-tabs.md-THEME_NAME-theme.md-primary>md-tabs-wrapper{background-color:\"{{primary-color}}\"}md-tabs.md-THEME_NAME-theme.md-primary>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]),md-tabs.md-THEME_NAME-theme.md-primary>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]) md-icon{color:\"{{primary-100}}\"}md-tabs.md-THEME_NAME-theme.md-primary>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-active,md-tabs.md-THEME_NAME-theme.md-primary>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-active md-icon,md-tabs.md-THEME_NAME-theme.md-primary>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused,md-tabs.md-THEME_NAME-theme.md-primary>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused md-icon{color:\"{{primary-contrast}}\"}md-tabs.md-THEME_NAME-theme.md-primary>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused{background:\"{{primary-contrast-0.1}}\"}md-tabs.md-THEME_NAME-theme.md-warn>md-tabs-wrapper{background-color:\"{{warn-color}}\"}md-tabs.md-THEME_NAME-theme.md-warn>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]),md-tabs.md-THEME_NAME-theme.md-warn>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]) md-icon{color:\"{{warn-100}}\"}md-tabs.md-THEME_NAME-theme.md-warn>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-active,md-tabs.md-THEME_NAME-theme.md-warn>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-active md-icon,md-tabs.md-THEME_NAME-theme.md-warn>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused,md-tabs.md-THEME_NAME-theme.md-warn>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused md-icon{color:\"{{warn-contrast}}\"}md-tabs.md-THEME_NAME-theme.md-warn>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused{background:\"{{warn-contrast-0.1}}\"}md-toolbar>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper{background-color:\"{{primary-color}}\"}md-toolbar>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]),md-toolbar>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]) md-icon{color:\"{{primary-100}}\"}md-toolbar>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-active,md-toolbar>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-active md-icon,md-toolbar>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused,md-toolbar>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused md-icon{color:\"{{primary-contrast}}\"}md-toolbar>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused{background:\"{{primary-contrast-0.1}}\"}md-toolbar.md-accent>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper{background-color:\"{{accent-color}}\"}md-toolbar.md-accent>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]),md-toolbar.md-accent>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]) md-icon{color:\"{{accent-A100}}\"}md-toolbar.md-accent>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-active,md-toolbar.md-accent>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-active md-icon,md-toolbar.md-accent>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused,md-toolbar.md-accent>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused md-icon{color:\"{{accent-contrast}}\"}md-toolbar.md-accent>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused{background:\"{{accent-contrast-0.1}}\"}md-toolbar.md-accent>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-ink-bar{color:\"{{primary-600-1}}\";background:\"{{primary-600-1}}\"}md-toolbar.md-warn>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper{background-color:\"{{warn-color}}\"}md-toolbar.md-warn>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]),md-toolbar.md-warn>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]) md-icon{color:\"{{warn-100}}\"}md-toolbar.md-warn>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-active,md-toolbar.md-warn>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-active md-icon,md-toolbar.md-warn>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused,md-toolbar.md-warn>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused md-icon{color:\"{{warn-contrast}}\"}md-toolbar.md-warn>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused{background:\"{{warn-contrast-0.1}}\"}md-toolbar.md-THEME_NAME-theme:not(.md-menu-toolbar){background-color:\"{{primary-color}}\";color:\"{{primary-contrast}}\"}md-toolbar.md-THEME_NAME-theme:not(.md-menu-toolbar) md-icon{color:\"{{primary-contrast}}\";fill:\"{{primary-contrast}}\"}md-toolbar.md-THEME_NAME-theme:not(.md-menu-toolbar) .md-button[disabled] md-icon{color:\"{{primary-contrast-0.26}}\";fill:\"{{primary-contrast-0.26}}\"}md-toolbar.md-THEME_NAME-theme:not(.md-menu-toolbar).md-accent{background-color:\"{{accent-color}}\";color:\"{{accent-contrast}}\"}md-toolbar.md-THEME_NAME-theme:not(.md-menu-toolbar).md-accent .md-ink-ripple{color:\"{{accent-contrast}}\"}md-toolbar.md-THEME_NAME-theme:not(.md-menu-toolbar).md-accent md-icon{color:\"{{accent-contrast}}\";fill:\"{{accent-contrast}}\"}md-toolbar.md-THEME_NAME-theme:not(.md-menu-toolbar).md-accent .md-button[disabled] md-icon{color:\"{{accent-contrast-0.26}}\";fill:\"{{accent-contrast-0.26}}\"}md-toolbar.md-THEME_NAME-theme:not(.md-menu-toolbar).md-warn{background-color:\"{{warn-color}}\";color:\"{{warn-contrast}}\"}.md-panel.md-tooltip.md-THEME_NAME-theme{color:\"{{background-700-contrast}}\";background-color:\"{{background-700}}\"}body.md-THEME_NAME-theme,html.md-THEME_NAME-theme{color:\"{{foreground-1}}\";background-color:\"{{background-color}}\"}"); 
+angular.module("material.core").constant("$MD_THEME_CSS", "md-autocomplete.md-THEME_NAME-theme{background:\"{{background-A100}}\"}md-autocomplete.md-THEME_NAME-theme[disabled]:not([md-floating-label]){background:\"{{background-100}}\"}md-autocomplete.md-THEME_NAME-theme button md-icon path{fill:\"{{background-600}}\"}md-autocomplete.md-THEME_NAME-theme button:after{background:\"{{background-600-0.3}}\"}.md-autocomplete-suggestions-container.md-THEME_NAME-theme{background:\"{{background-A100}}\"}.md-autocomplete-suggestions-container.md-THEME_NAME-theme li{color:\"{{background-900}}\"}.md-autocomplete-suggestions-container.md-THEME_NAME-theme li .highlight{color:\"{{background-600}}\"}.md-autocomplete-suggestions-container.md-THEME_NAME-theme li.selected,.md-autocomplete-suggestions-container.md-THEME_NAME-theme li:hover{background:\"{{background-200}}\"}md-backdrop{background-color:\"{{background-900-0.0}}\"}md-backdrop.md-opaque.md-THEME_NAME-theme{background-color:\"{{background-900-1.0}}\"}md-bottom-sheet.md-THEME_NAME-theme{background-color:\"{{background-50}}\";border-top-color:\"{{background-300}}\"}md-bottom-sheet.md-THEME_NAME-theme.md-list md-list-item{color:\"{{foreground-1}}\"}md-bottom-sheet.md-THEME_NAME-theme .md-subheader{background-color:\"{{background-50}}\";color:\"{{foreground-1}}\"}.md-button.md-THEME_NAME-theme:not([disabled]).md-focused,.md-button.md-THEME_NAME-theme:not([disabled]):hover{background-color:\"{{background-500-0.2}}\"}.md-button.md-THEME_NAME-theme:not([disabled]).md-icon-button:hover{background-color:transparent}.md-button.md-THEME_NAME-theme.md-fab md-icon{color:\"{{accent-contrast}}\"}.md-button.md-THEME_NAME-theme.md-primary{color:\"{{primary-color}}\"}.md-button.md-THEME_NAME-theme.md-primary.md-fab,.md-button.md-THEME_NAME-theme.md-primary.md-raised{color:\"{{primary-contrast}}\";background-color:\"{{primary-color}}\"}.md-button.md-THEME_NAME-theme.md-primary.md-fab:not([disabled]) md-icon,.md-button.md-THEME_NAME-theme.md-primary.md-raised:not([disabled]) md-icon{color:\"{{primary-contrast}}\"}.md-button.md-THEME_NAME-theme.md-primary.md-fab:not([disabled]).md-focused,.md-button.md-THEME_NAME-theme.md-primary.md-fab:not([disabled]):hover,.md-button.md-THEME_NAME-theme.md-primary.md-raised:not([disabled]).md-focused,.md-button.md-THEME_NAME-theme.md-primary.md-raised:not([disabled]):hover{background-color:\"{{primary-600}}\"}.md-button.md-THEME_NAME-theme.md-primary:not([disabled]) md-icon{color:\"{{primary-color}}\"}.md-button.md-THEME_NAME-theme.md-fab{background-color:\"{{accent-color}}\";color:\"{{accent-contrast}}\"}.md-button.md-THEME_NAME-theme.md-fab:not([disabled]) .md-icon{color:\"{{accent-contrast}}\"}.md-button.md-THEME_NAME-theme.md-fab:not([disabled]).md-focused,.md-button.md-THEME_NAME-theme.md-fab:not([disabled]):hover{background-color:\"{{accent-A700}}\"}.md-button.md-THEME_NAME-theme.md-raised{color:\"{{background-900}}\";background-color:\"{{background-50}}\"}.md-button.md-THEME_NAME-theme.md-raised:not([disabled]) md-icon{color:\"{{background-900}}\"}.md-button.md-THEME_NAME-theme.md-raised:not([disabled]):hover{background-color:\"{{background-50}}\"}.md-button.md-THEME_NAME-theme.md-raised:not([disabled]).md-focused{background-color:\"{{background-200}}\"}.md-button.md-THEME_NAME-theme.md-warn{color:\"{{warn-color}}\"}.md-button.md-THEME_NAME-theme.md-warn.md-fab,.md-button.md-THEME_NAME-theme.md-warn.md-raised{color:\"{{warn-contrast}}\";background-color:\"{{warn-color}}\"}.md-button.md-THEME_NAME-theme.md-warn.md-fab:not([disabled]) md-icon,.md-button.md-THEME_NAME-theme.md-warn.md-raised:not([disabled]) md-icon{color:\"{{warn-contrast}}\"}.md-button.md-THEME_NAME-theme.md-warn.md-fab:not([disabled]).md-focused,.md-button.md-THEME_NAME-theme.md-warn.md-fab:not([disabled]):hover,.md-button.md-THEME_NAME-theme.md-warn.md-raised:not([disabled]).md-focused,.md-button.md-THEME_NAME-theme.md-warn.md-raised:not([disabled]):hover{background-color:\"{{warn-600}}\"}.md-button.md-THEME_NAME-theme.md-warn:not([disabled]) md-icon{color:\"{{warn-color}}\"}.md-button.md-THEME_NAME-theme.md-accent{color:\"{{accent-color}}\"}.md-button.md-THEME_NAME-theme.md-accent.md-fab,.md-button.md-THEME_NAME-theme.md-accent.md-raised{color:\"{{accent-contrast}}\";background-color:\"{{accent-color}}\"}.md-button.md-THEME_NAME-theme.md-accent.md-fab:not([disabled]) md-icon,.md-button.md-THEME_NAME-theme.md-accent.md-raised:not([disabled]) md-icon{color:\"{{accent-contrast}}\"}.md-button.md-THEME_NAME-theme.md-accent.md-fab:not([disabled]).md-focused,.md-button.md-THEME_NAME-theme.md-accent.md-fab:not([disabled]):hover,.md-button.md-THEME_NAME-theme.md-accent.md-raised:not([disabled]).md-focused,.md-button.md-THEME_NAME-theme.md-accent.md-raised:not([disabled]):hover{background-color:\"{{accent-A700}}\"}.md-button.md-THEME_NAME-theme.md-accent:not([disabled]) md-icon{color:\"{{accent-color}}\"}.md-button.md-THEME_NAME-theme.md-accent[disabled],.md-button.md-THEME_NAME-theme.md-fab[disabled],.md-button.md-THEME_NAME-theme.md-raised[disabled],.md-button.md-THEME_NAME-theme.md-warn[disabled],.md-button.md-THEME_NAME-theme[disabled]{color:\"{{foreground-3}}\";cursor:default}.md-button.md-THEME_NAME-theme.md-accent[disabled] md-icon,.md-button.md-THEME_NAME-theme.md-fab[disabled] md-icon,.md-button.md-THEME_NAME-theme.md-raised[disabled] md-icon,.md-button.md-THEME_NAME-theme.md-warn[disabled] md-icon,.md-button.md-THEME_NAME-theme[disabled] md-icon{color:\"{{foreground-3}}\"}.md-button.md-THEME_NAME-theme.md-fab[disabled],.md-button.md-THEME_NAME-theme.md-raised[disabled]{background-color:\"{{foreground-4}}\"}.md-button.md-THEME_NAME-theme[disabled]{background-color:transparent}._md a.md-THEME_NAME-theme:not(.md-button).md-primary{color:\"{{primary-color}}\"}._md a.md-THEME_NAME-theme:not(.md-button).md-primary:hover{color:\"{{primary-700}}\"}._md a.md-THEME_NAME-theme:not(.md-button).md-accent{color:\"{{accent-color}}\"}._md a.md-THEME_NAME-theme:not(.md-button).md-accent:hover{color:\"{{accent-A700}}\"}._md a.md-THEME_NAME-theme:not(.md-button).md-warn{color:\"{{warn-color}}\"}._md a.md-THEME_NAME-theme:not(.md-button).md-warn:hover{color:\"{{warn-700}}\"}md-card.md-THEME_NAME-theme{color:\"{{foreground-1}}\";background-color:\"{{background-hue-1}}\";border-radius:2px}md-card.md-THEME_NAME-theme .md-card-image{border-radius:2px 2px 0 0}md-card.md-THEME_NAME-theme md-card-header md-card-avatar md-icon{color:\"{{background-color}}\";background-color:\"{{foreground-3}}\"}md-card.md-THEME_NAME-theme md-card-header md-card-header-text .md-subhead,md-card.md-THEME_NAME-theme md-card-title md-card-title-text:not(:only-child) .md-subhead{color:\"{{foreground-2}}\"}md-checkbox.md-THEME_NAME-theme .md-ripple{color:\"{{accent-A700}}\"}md-checkbox.md-THEME_NAME-theme.md-checked .md-ripple{color:\"{{background-600}}\"}md-checkbox.md-THEME_NAME-theme.md-checked.md-focused .md-container:before{background-color:\"{{accent-color-0.26}}\"}md-checkbox.md-THEME_NAME-theme .md-ink-ripple{color:\"{{foreground-2}}\"}md-checkbox.md-THEME_NAME-theme.md-checked .md-ink-ripple{color:\"{{accent-color-0.87}}\"}md-checkbox.md-THEME_NAME-theme:not(.md-checked) .md-icon{border-color:\"{{foreground-2}}\"}md-checkbox.md-THEME_NAME-theme.md-checked .md-icon{background-color:\"{{accent-color-0.87}}\"}md-checkbox.md-THEME_NAME-theme.md-checked .md-icon:after{border-color:\"{{accent-contrast-0.87}}\"}md-checkbox.md-THEME_NAME-theme:not([disabled]).md-primary .md-ripple{color:\"{{primary-600}}\"}md-checkbox.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked .md-ripple{color:\"{{background-600}}\"}md-checkbox.md-THEME_NAME-theme:not([disabled]).md-primary .md-ink-ripple{color:\"{{foreground-2}}\"}md-checkbox.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked .md-ink-ripple{color:\"{{primary-color-0.87}}\"}md-checkbox.md-THEME_NAME-theme:not([disabled]).md-primary:not(.md-checked) .md-icon{border-color:\"{{foreground-2}}\"}md-checkbox.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked .md-icon{background-color:\"{{primary-color-0.87}}\"}md-checkbox.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked.md-focused .md-container:before{background-color:\"{{primary-color-0.26}}\"}md-checkbox.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked .md-icon:after{border-color:\"{{primary-contrast-0.87}}\"}md-checkbox.md-THEME_NAME-theme:not([disabled]).md-primary .md-indeterminate[disabled] .md-container{color:\"{{foreground-3}}\"}md-checkbox.md-THEME_NAME-theme:not([disabled]).md-warn .md-ripple{color:\"{{warn-600}}\"}md-checkbox.md-THEME_NAME-theme:not([disabled]).md-warn .md-ink-ripple{color:\"{{foreground-2}}\"}md-checkbox.md-THEME_NAME-theme:not([disabled]).md-warn.md-checked .md-ink-ripple{color:\"{{warn-color-0.87}}\"}md-checkbox.md-THEME_NAME-theme:not([disabled]).md-warn:not(.md-checked) .md-icon{border-color:\"{{foreground-2}}\"}md-checkbox.md-THEME_NAME-theme:not([disabled]).md-warn.md-checked .md-icon{background-color:\"{{warn-color-0.87}}\"}md-checkbox.md-THEME_NAME-theme:not([disabled]).md-warn.md-checked.md-focused:not([disabled]) .md-container:before{background-color:\"{{warn-color-0.26}}\"}md-checkbox.md-THEME_NAME-theme:not([disabled]).md-warn.md-checked .md-icon:after{border-color:\"{{background-200}}\"}md-checkbox.md-THEME_NAME-theme[disabled]:not(.md-checked) .md-icon{border-color:\"{{foreground-3}}\"}md-checkbox.md-THEME_NAME-theme[disabled].md-checked .md-icon{background-color:\"{{foreground-3}}\"}md-checkbox.md-THEME_NAME-theme[disabled].md-checked .md-icon:after{border-color:\"{{background-200}}\"}md-checkbox.md-THEME_NAME-theme[disabled] .md-icon:after{border-color:\"{{foreground-3}}\"}md-checkbox.md-THEME_NAME-theme[disabled] .md-label{color:\"{{foreground-3}}\"}md-chips.md-THEME_NAME-theme .md-chips{box-shadow:0 1px \"{{foreground-4}}\"}md-chips.md-THEME_NAME-theme .md-chips.md-focused{box-shadow:0 2px \"{{primary-color}}\"}md-chips.md-THEME_NAME-theme .md-chips .md-chip-input-container input{color:\"{{foreground-1}}\"}md-chips.md-THEME_NAME-theme .md-chips .md-chip-input-container input:-moz-placeholder,md-chips.md-THEME_NAME-theme .md-chips .md-chip-input-container input::-moz-placeholder{color:\"{{foreground-3}}\"}md-chips.md-THEME_NAME-theme .md-chips .md-chip-input-container input:-ms-input-placeholder{color:\"{{foreground-3}}\"}md-chips.md-THEME_NAME-theme .md-chips .md-chip-input-container input::-webkit-input-placeholder{color:\"{{foreground-3}}\"}md-chips.md-THEME_NAME-theme md-chip{background:\"{{background-300}}\";color:\"{{background-800}}\"}md-chips.md-THEME_NAME-theme md-chip md-icon{color:\"{{background-700}}\"}md-chips.md-THEME_NAME-theme md-chip.md-focused{background:\"{{primary-color}}\";color:\"{{primary-contrast}}\"}md-chips.md-THEME_NAME-theme md-chip.md-focused md-icon{color:\"{{primary-contrast}}\"}md-chips.md-THEME_NAME-theme md-chip._md-chip-editing{background:transparent;color:\"{{background-800}}\"}md-chips.md-THEME_NAME-theme md-chip-remove .md-button md-icon path{fill:\"{{background-500}}\"}.md-contact-suggestion span.md-contact-email{color:\"{{background-400}}\"}md-content.md-THEME_NAME-theme{color:\"{{foreground-1}}\";background-color:\"{{background-default}}\"}.md-calendar.md-THEME_NAME-theme{background:\"{{background-A100}}\";color:\"{{background-A200-0.87}}\"}.md-calendar.md-THEME_NAME-theme tr:last-child td{border-bottom-color:\"{{background-200}}\"}.md-THEME_NAME-theme .md-calendar-day-header{background:\"{{background-300}}\";color:\"{{background-A200-0.87}}\"}.md-THEME_NAME-theme .md-calendar-date.md-calendar-date-today .md-calendar-date-selection-indicator{border:1px solid \"{{primary-500}}\"}.md-THEME_NAME-theme .md-calendar-date.md-calendar-date-today.md-calendar-date-disabled{color:\"{{primary-500-0.6}}\"}.md-calendar-date.md-focus .md-THEME_NAME-theme .md-calendar-date-selection-indicator,.md-THEME_NAME-theme .md-calendar-date-selection-indicator:hover{background:\"{{background-300}}\"}.md-THEME_NAME-theme .md-calendar-date.md-calendar-selected-date .md-calendar-date-selection-indicator,.md-THEME_NAME-theme .md-calendar-date.md-focus.md-calendar-selected-date .md-calendar-date-selection-indicator{background:\"{{primary-500}}\";color:\"{{primary-500-contrast}}\";border-color:transparent}.md-THEME_NAME-theme .md-calendar-date-disabled,.md-THEME_NAME-theme .md-calendar-month-label-disabled{color:\"{{background-A200-0.435}}\"}.md-THEME_NAME-theme .md-datepicker-input{color:\"{{foreground-1}}\"}.md-THEME_NAME-theme .md-datepicker-input:-moz-placeholder,.md-THEME_NAME-theme .md-datepicker-input::-moz-placeholder{color:\"{{foreground-3}}\"}.md-THEME_NAME-theme .md-datepicker-input:-ms-input-placeholder{color:\"{{foreground-3}}\"}.md-THEME_NAME-theme .md-datepicker-input::-webkit-input-placeholder{color:\"{{foreground-3}}\"}.md-THEME_NAME-theme .md-datepicker-input-container{border-bottom-color:\"{{foreground-4}}\"}.md-THEME_NAME-theme .md-datepicker-input-container.md-datepicker-focused{border-bottom-color:\"{{primary-color}}\"}.md-accent .md-THEME_NAME-theme .md-datepicker-input-container.md-datepicker-focused{border-bottom-color:\"{{accent-color}}\"}.md-THEME_NAME-theme .md-datepicker-input-container.md-datepicker-invalid,.md-warn .md-THEME_NAME-theme .md-datepicker-input-container.md-datepicker-focused{border-bottom-color:\"{{warn-A700}}\"}.md-THEME_NAME-theme .md-datepicker-calendar-pane{border-color:\"{{background-hue-1}}\"}.md-THEME_NAME-theme .md-datepicker-triangle-button .md-datepicker-expand-triangle{border-top-color:\"{{foreground-2}}\"}.md-THEME_NAME-theme .md-datepicker-open .md-datepicker-calendar-icon{color:\"{{primary-color}}\"}.md-accent .md-THEME_NAME-theme .md-datepicker-open .md-datepicker-calendar-icon,.md-THEME_NAME-theme .md-datepicker-open.md-accent .md-datepicker-calendar-icon{color:\"{{accent-color}}\"}.md-THEME_NAME-theme .md-datepicker-open.md-warn .md-datepicker-calendar-icon,.md-warn .md-THEME_NAME-theme .md-datepicker-open .md-datepicker-calendar-icon{color:\"{{warn-A700}}\"}.md-THEME_NAME-theme .md-datepicker-calendar{background:\"{{background-A100}}\"}.md-THEME_NAME-theme .md-datepicker-input-mask-opaque{box-shadow:0 0 0 9999px \"{{background-hue-1}}\"}.md-THEME_NAME-theme .md-datepicker-open .md-datepicker-input-container{background:\"{{background-hue-1}}\"}md-dialog.md-THEME_NAME-theme{border-radius:4px;background-color:\"{{background-hue-1}}\";color:\"{{foreground-1}}\"}md-dialog.md-THEME_NAME-theme.md-content-overflow .md-actions,md-dialog.md-THEME_NAME-theme.md-content-overflow md-dialog-actions,md-divider.md-THEME_NAME-theme{border-top-color:\"{{foreground-4}}\"}.layout-gt-lg-row>md-divider.md-THEME_NAME-theme,.layout-gt-md-row>md-divider.md-THEME_NAME-theme,.layout-gt-sm-row>md-divider.md-THEME_NAME-theme,.layout-gt-xs-row>md-divider.md-THEME_NAME-theme,.layout-lg-row>md-divider.md-THEME_NAME-theme,.layout-md-row>md-divider.md-THEME_NAME-theme,.layout-row>md-divider.md-THEME_NAME-theme,.layout-sm-row>md-divider.md-THEME_NAME-theme,.layout-xl-row>md-divider.md-THEME_NAME-theme,.layout-xs-row>md-divider.md-THEME_NAME-theme{border-right-color:\"{{foreground-4}}\"}md-icon.md-THEME_NAME-theme{color:\"{{foreground-2}}\"}md-icon.md-THEME_NAME-theme.md-primary{color:\"{{primary-color}}\"}md-icon.md-THEME_NAME-theme.md-accent{color:\"{{accent-color}}\"}md-icon.md-THEME_NAME-theme.md-warn{color:\"{{warn-color}}\"}md-input-container.md-THEME_NAME-theme .md-input{color:\"{{foreground-1}}\";border-color:\"{{foreground-4}}\"}md-input-container.md-THEME_NAME-theme .md-input:-moz-placeholder,md-input-container.md-THEME_NAME-theme .md-input::-moz-placeholder{color:\"{{foreground-3}}\"}md-input-container.md-THEME_NAME-theme .md-input:-ms-input-placeholder{color:\"{{foreground-3}}\"}md-input-container.md-THEME_NAME-theme .md-input::-webkit-input-placeholder{color:\"{{foreground-3}}\"}md-input-container.md-THEME_NAME-theme>md-icon{color:\"{{foreground-1}}\"}md-input-container.md-THEME_NAME-theme .md-placeholder,md-input-container.md-THEME_NAME-theme label{color:\"{{foreground-3}}\"}md-input-container.md-THEME_NAME-theme label.md-required:after{color:\"{{warn-A700}}\"}md-input-container.md-THEME_NAME-theme:not(.md-input-focused):not(.md-input-invalid) label.md-required:after{color:\"{{foreground-2}}\"}md-input-container.md-THEME_NAME-theme .md-input-message-animation,md-input-container.md-THEME_NAME-theme .md-input-messages-animation{color:\"{{warn-A700}}\"}md-input-container.md-THEME_NAME-theme .md-input-message-animation .md-char-counter,md-input-container.md-THEME_NAME-theme .md-input-messages-animation .md-char-counter{color:\"{{foreground-1}}\"}md-input-container.md-THEME_NAME-theme.md-input-focused .md-input:-moz-placeholder,md-input-container.md-THEME_NAME-theme.md-input-focused .md-input::-moz-placeholder{color:\"{{foreground-2}}\"}md-input-container.md-THEME_NAME-theme.md-input-focused .md-input:-ms-input-placeholder{color:\"{{foreground-2}}\"}md-input-container.md-THEME_NAME-theme.md-input-focused .md-input::-webkit-input-placeholder{color:\"{{foreground-2}}\"}md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-has-value label{color:\"{{foreground-2}}\"}md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-focused .md-input,md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-resized .md-input{border-color:\"{{primary-color}}\"}md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-focused label,md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-focused md-icon{color:\"{{primary-color}}\"}md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-focused.md-accent .md-input{border-color:\"{{accent-color}}\"}md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-focused.md-accent label,md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-focused.md-accent md-icon{color:\"{{accent-color}}\"}md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-focused.md-warn .md-input{border-color:\"{{warn-A700}}\"}md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-focused.md-warn label,md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-focused.md-warn md-icon{color:\"{{warn-A700}}\"}md-input-container.md-THEME_NAME-theme.md-input-invalid .md-input{border-color:\"{{warn-A700}}\"}md-input-container.md-THEME_NAME-theme.md-input-invalid .md-char-counter,md-input-container.md-THEME_NAME-theme.md-input-invalid .md-input-message-animation,md-input-container.md-THEME_NAME-theme.md-input-invalid label{color:\"{{warn-A700}}\"}[disabled] md-input-container.md-THEME_NAME-theme .md-input,md-input-container.md-THEME_NAME-theme .md-input[disabled]{border-bottom-color:transparent;color:\"{{foreground-3}}\";background-image:linear-gradient(90deg,\"{{foreground-3}}\" 0,\"{{foreground-3}}\" 33%,transparent 0);background-image:-ms-linear-gradient(left,transparent 0,\"{{foreground-3}}\" 100%)}md-list.md-THEME_NAME-theme md-list-item.md-2-line .md-list-item-text h3,md-list.md-THEME_NAME-theme md-list-item.md-2-line .md-list-item-text h4,md-list.md-THEME_NAME-theme md-list-item.md-3-line .md-list-item-text h3,md-list.md-THEME_NAME-theme md-list-item.md-3-line .md-list-item-text h4{color:\"{{foreground-1}}\"}md-list.md-THEME_NAME-theme md-list-item.md-2-line .md-list-item-text p,md-list.md-THEME_NAME-theme md-list-item.md-3-line .md-list-item-text p{color:\"{{foreground-2}}\"}md-list.md-THEME_NAME-theme .md-proxy-focus.md-focused div.md-no-style{background-color:\"{{background-100}}\"}md-list.md-THEME_NAME-theme md-list-item .md-avatar-icon{background-color:\"{{foreground-3}}\";color:\"{{background-color}}\"}md-list.md-THEME_NAME-theme md-list-item>md-icon{color:\"{{foreground-2}}\"}md-list.md-THEME_NAME-theme md-list-item>md-icon.md-highlight{color:\"{{primary-color}}\"}md-list.md-THEME_NAME-theme md-list-item>md-icon.md-highlight.md-accent{color:\"{{accent-color}}\"}md-menu-content.md-THEME_NAME-theme{background-color:\"{{background-A100}}\"}md-menu-content.md-THEME_NAME-theme md-menu-item{color:\"{{background-A200-0.87}}\"}md-menu-content.md-THEME_NAME-theme md-menu-item md-icon{color:\"{{background-A200-0.54}}\"}md-menu-content.md-THEME_NAME-theme md-menu-item .md-button[disabled],md-menu-content.md-THEME_NAME-theme md-menu-item .md-button[disabled] md-icon{color:\"{{background-A200-0.25}}\"}md-menu-content.md-THEME_NAME-theme md-menu-divider{background-color:\"{{background-A200-0.11}}\"}md-menu-bar.md-THEME_NAME-theme>button.md-button{color:\"{{foreground-2}}\";border-radius:2px}md-menu-bar.md-THEME_NAME-theme md-menu.md-open>button,md-menu-bar.md-THEME_NAME-theme md-menu>button:focus{outline:none;background:\"{{background-200}}\"}md-menu-bar.md-THEME_NAME-theme.md-open:not(.md-keyboard-mode) md-menu:hover>button{background-color:\"{{ background-500-0.2}}\"}md-menu-bar.md-THEME_NAME-theme:not(.md-keyboard-mode):not(.md-open) md-menu button:focus,md-menu-bar.md-THEME_NAME-theme:not(.md-keyboard-mode):not(.md-open) md-menu button:hover{background:transparent}md-menu-content.md-THEME_NAME-theme .md-menu>.md-button:after{color:\"{{background-A200-0.54}}\"}md-menu-content.md-THEME_NAME-theme .md-menu.md-open>.md-button{background-color:\"{{ background-500-0.2}}\"}md-toolbar.md-THEME_NAME-theme.md-menu-toolbar{background-color:\"{{background-A100}}\";color:\"{{background-A200}}\"}md-toolbar.md-THEME_NAME-theme.md-menu-toolbar md-toolbar-filler{background-color:\"{{primary-color}}\";color:\"{{background-A100-0.87}}\"}md-toolbar.md-THEME_NAME-theme.md-menu-toolbar md-toolbar-filler md-icon{color:\"{{background-A100-0.87}}\"}md-nav-bar.md-THEME_NAME-theme .md-nav-bar{background-color:transparent;border-color:\"{{foreground-4}}\"}md-nav-bar.md-THEME_NAME-theme .md-button._md-nav-button.md-unselected{color:\"{{foreground-2}}\"}md-nav-bar.md-THEME_NAME-theme md-nav-ink-bar{color:\"{{accent-color}}\";background:\"{{accent-color}}\"}md-nav-bar.md-THEME_NAME-theme.md-accent>.md-nav-bar{background-color:\"{{accent-color}}\"}md-nav-bar.md-THEME_NAME-theme.md-accent>.md-nav-bar .md-button._md-nav-button{color:\"{{accent-A100}}\"}md-nav-bar.md-THEME_NAME-theme.md-accent>.md-nav-bar .md-button._md-nav-button.md-active,md-nav-bar.md-THEME_NAME-theme.md-accent>.md-nav-bar .md-button._md-nav-button.md-focused{color:\"{{accent-contrast}}\"}md-nav-bar.md-THEME_NAME-theme.md-accent>.md-nav-bar .md-button._md-nav-button.md-focused{background:\"{{accent-contrast-0.1}}\"}md-nav-bar.md-THEME_NAME-theme.md-accent>.md-nav-bar md-nav-ink-bar{color:\"{{primary-600-1}}\";background:\"{{primary-600-1}}\"}md-nav-bar.md-THEME_NAME-theme.md-warn>.md-nav-bar{background-color:\"{{warn-color}}\"}md-nav-bar.md-THEME_NAME-theme.md-warn>.md-nav-bar .md-button._md-nav-button{color:\"{{warn-100}}\"}md-nav-bar.md-THEME_NAME-theme.md-warn>.md-nav-bar .md-button._md-nav-button.md-active,md-nav-bar.md-THEME_NAME-theme.md-warn>.md-nav-bar .md-button._md-nav-button.md-focused{color:\"{{warn-contrast}}\"}md-nav-bar.md-THEME_NAME-theme.md-warn>.md-nav-bar .md-button._md-nav-button.md-focused{background:\"{{warn-contrast-0.1}}\"}md-nav-bar.md-THEME_NAME-theme.md-primary>.md-nav-bar{background-color:\"{{primary-color}}\"}md-nav-bar.md-THEME_NAME-theme.md-primary>.md-nav-bar .md-button._md-nav-button{color:\"{{primary-100}}\"}md-nav-bar.md-THEME_NAME-theme.md-primary>.md-nav-bar .md-button._md-nav-button.md-active,md-nav-bar.md-THEME_NAME-theme.md-primary>.md-nav-bar .md-button._md-nav-button.md-focused{color:\"{{primary-contrast}}\"}md-nav-bar.md-THEME_NAME-theme.md-primary>.md-nav-bar .md-button._md-nav-button.md-focused{background:\"{{primary-contrast-0.1}}\"}md-toolbar>md-nav-bar.md-THEME_NAME-theme>.md-nav-bar{background-color:\"{{primary-color}}\"}md-toolbar>md-nav-bar.md-THEME_NAME-theme>.md-nav-bar .md-button._md-nav-button{color:\"{{primary-100}}\"}md-toolbar>md-nav-bar.md-THEME_NAME-theme>.md-nav-bar .md-button._md-nav-button.md-active,md-toolbar>md-nav-bar.md-THEME_NAME-theme>.md-nav-bar .md-button._md-nav-button.md-focused{color:\"{{primary-contrast}}\"}md-toolbar>md-nav-bar.md-THEME_NAME-theme>.md-nav-bar .md-button._md-nav-button.md-focused{background:\"{{primary-contrast-0.1}}\"}md-toolbar.md-accent>md-nav-bar.md-THEME_NAME-theme>.md-nav-bar{background-color:\"{{accent-color}}\"}md-toolbar.md-accent>md-nav-bar.md-THEME_NAME-theme>.md-nav-bar .md-button._md-nav-button{color:\"{{accent-A100}}\"}md-toolbar.md-accent>md-nav-bar.md-THEME_NAME-theme>.md-nav-bar .md-button._md-nav-button.md-active,md-toolbar.md-accent>md-nav-bar.md-THEME_NAME-theme>.md-nav-bar .md-button._md-nav-button.md-focused{color:\"{{accent-contrast}}\"}md-toolbar.md-accent>md-nav-bar.md-THEME_NAME-theme>.md-nav-bar .md-button._md-nav-button.md-focused{background:\"{{accent-contrast-0.1}}\"}md-toolbar.md-accent>md-nav-bar.md-THEME_NAME-theme>.md-nav-bar md-nav-ink-bar{color:\"{{primary-600-1}}\";background:\"{{primary-600-1}}\"}md-toolbar.md-warn>md-nav-bar.md-THEME_NAME-theme>.md-nav-bar{background-color:\"{{warn-color}}\"}md-toolbar.md-warn>md-nav-bar.md-THEME_NAME-theme>.md-nav-bar .md-button._md-nav-button{color:\"{{warn-100}}\"}md-toolbar.md-warn>md-nav-bar.md-THEME_NAME-theme>.md-nav-bar .md-button._md-nav-button.md-active,md-toolbar.md-warn>md-nav-bar.md-THEME_NAME-theme>.md-nav-bar .md-button._md-nav-button.md-focused{color:\"{{warn-contrast}}\"}md-toolbar.md-warn>md-nav-bar.md-THEME_NAME-theme>.md-nav-bar .md-button._md-nav-button.md-focused{background:\"{{warn-contrast-0.1}}\"}md-progress-circular.md-THEME_NAME-theme path{stroke:\"{{primary-color}}\"}md-progress-circular.md-THEME_NAME-theme.md-warn path{stroke:\"{{warn-color}}\"}md-progress-circular.md-THEME_NAME-theme.md-accent path{stroke:\"{{accent-color}}\"}._md-panel-backdrop.md-THEME_NAME-theme{background-color:\"{{background-900-1.0}}\"}md-progress-linear.md-THEME_NAME-theme .md-container{background-color:\"{{primary-100}}\"}md-progress-linear.md-THEME_NAME-theme .md-bar{background-color:\"{{primary-color}}\"}md-progress-linear.md-THEME_NAME-theme.md-warn .md-container{background-color:\"{{warn-100}}\"}md-progress-linear.md-THEME_NAME-theme.md-warn .md-bar{background-color:\"{{warn-color}}\"}md-progress-linear.md-THEME_NAME-theme.md-accent .md-container{background-color:\"{{accent-100}}\"}md-progress-linear.md-THEME_NAME-theme.md-accent .md-bar{background-color:\"{{accent-color}}\"}md-progress-linear.md-THEME_NAME-theme[md-mode=buffer].md-warn .md-bar1{background-color:\"{{warn-100}}\"}md-progress-linear.md-THEME_NAME-theme[md-mode=buffer].md-warn .md-dashed:before{background:radial-gradient(\"{{warn-100}}\" 0,\"{{warn-100}}\" 16%,transparent 42%)}md-progress-linear.md-THEME_NAME-theme[md-mode=buffer].md-accent .md-bar1{background-color:\"{{accent-100}}\"}md-progress-linear.md-THEME_NAME-theme[md-mode=buffer].md-accent .md-dashed:before{background:radial-gradient(\"{{accent-100}}\" 0,\"{{accent-100}}\" 16%,transparent 42%)}md-radio-button.md-THEME_NAME-theme .md-off{border-color:\"{{foreground-2}}\"}md-radio-button.md-THEME_NAME-theme .md-on{background-color:\"{{accent-color-0.87}}\"}md-radio-button.md-THEME_NAME-theme.md-checked .md-off{border-color:\"{{accent-color-0.87}}\"}md-radio-button.md-THEME_NAME-theme.md-checked .md-ink-ripple{color:\"{{accent-color-0.87}}\"}md-radio-button.md-THEME_NAME-theme .md-container .md-ripple{color:\"{{accent-A700}}\"}md-radio-button.md-THEME_NAME-theme:not([disabled]).md-primary .md-on,md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-primary .md-on,md-radio-group.md-THEME_NAME-theme:not([disabled]).md-primary .md-on,md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-primary .md-on{background-color:\"{{primary-color-0.87}}\"}md-radio-button.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked .md-off,md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-primary.md-checked .md-off,md-radio-button.md-THEME_NAME-theme:not([disabled]).md-primary .md-checked .md-off,md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-primary .md-checked .md-off,md-radio-group.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked .md-off,md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-primary.md-checked .md-off,md-radio-group.md-THEME_NAME-theme:not([disabled]).md-primary .md-checked .md-off,md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-primary .md-checked .md-off{border-color:\"{{primary-color-0.87}}\"}md-radio-button.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked .md-ink-ripple,md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-primary.md-checked .md-ink-ripple,md-radio-button.md-THEME_NAME-theme:not([disabled]).md-primary .md-checked .md-ink-ripple,md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-primary .md-checked .md-ink-ripple,md-radio-group.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked .md-ink-ripple,md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-primary.md-checked .md-ink-ripple,md-radio-group.md-THEME_NAME-theme:not([disabled]).md-primary .md-checked .md-ink-ripple,md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-primary .md-checked .md-ink-ripple{color:\"{{primary-color-0.87}}\"}md-radio-button.md-THEME_NAME-theme:not([disabled]).md-primary .md-container .md-ripple,md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-primary .md-container .md-ripple,md-radio-group.md-THEME_NAME-theme:not([disabled]).md-primary .md-container .md-ripple,md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-primary .md-container .md-ripple{color:\"{{primary-600}}\"}md-radio-button.md-THEME_NAME-theme:not([disabled]).md-warn .md-on,md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-warn .md-on,md-radio-group.md-THEME_NAME-theme:not([disabled]).md-warn .md-on,md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-warn .md-on{background-color:\"{{warn-color-0.87}}\"}md-radio-button.md-THEME_NAME-theme:not([disabled]).md-warn.md-checked .md-off,md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-warn.md-checked .md-off,md-radio-button.md-THEME_NAME-theme:not([disabled]).md-warn .md-checked .md-off,md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-warn .md-checked .md-off,md-radio-group.md-THEME_NAME-theme:not([disabled]).md-warn.md-checked .md-off,md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-warn.md-checked .md-off,md-radio-group.md-THEME_NAME-theme:not([disabled]).md-warn .md-checked .md-off,md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-warn .md-checked .md-off{border-color:\"{{warn-color-0.87}}\"}md-radio-button.md-THEME_NAME-theme:not([disabled]).md-warn.md-checked .md-ink-ripple,md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-warn.md-checked .md-ink-ripple,md-radio-button.md-THEME_NAME-theme:not([disabled]).md-warn .md-checked .md-ink-ripple,md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-warn .md-checked .md-ink-ripple,md-radio-group.md-THEME_NAME-theme:not([disabled]).md-warn.md-checked .md-ink-ripple,md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-warn.md-checked .md-ink-ripple,md-radio-group.md-THEME_NAME-theme:not([disabled]).md-warn .md-checked .md-ink-ripple,md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-warn .md-checked .md-ink-ripple{color:\"{{warn-color-0.87}}\"}md-radio-button.md-THEME_NAME-theme:not([disabled]).md-warn .md-container .md-ripple,md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-warn .md-container .md-ripple,md-radio-group.md-THEME_NAME-theme:not([disabled]).md-warn .md-container .md-ripple,md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-warn .md-container .md-ripple{color:\"{{warn-600}}\"}md-radio-button.md-THEME_NAME-theme[disabled],md-radio-group.md-THEME_NAME-theme[disabled]{color:\"{{foreground-3}}\"}md-radio-button.md-THEME_NAME-theme[disabled] .md-container .md-off,md-radio-button.md-THEME_NAME-theme[disabled] .md-container .md-on,md-radio-group.md-THEME_NAME-theme[disabled] .md-container .md-off,md-radio-group.md-THEME_NAME-theme[disabled] .md-container .md-on{border-color:\"{{foreground-3}}\"}md-radio-group.md-THEME_NAME-theme .md-checked .md-ink-ripple{color:\"{{accent-color-0.26}}\"}md-radio-group.md-THEME_NAME-theme .md-checked:not([disabled]).md-primary .md-ink-ripple,md-radio-group.md-THEME_NAME-theme.md-primary .md-checked:not([disabled]) .md-ink-ripple{color:\"{{primary-color-0.26}}\"}md-radio-group.md-THEME_NAME-theme .md-checked.md-primary .md-ink-ripple{color:\"{{warn-color-0.26}}\"}md-radio-group.md-THEME_NAME-theme.md-focused:not(:empty) .md-checked .md-container:before{background-color:\"{{accent-color-0.26}}\"}md-radio-group.md-THEME_NAME-theme.md-focused:not(:empty) .md-checked.md-primary .md-container:before,md-radio-group.md-THEME_NAME-theme.md-focused:not(:empty).md-primary .md-checked .md-container:before{background-color:\"{{primary-color-0.26}}\"}md-radio-group.md-THEME_NAME-theme.md-focused:not(:empty) .md-checked.md-warn .md-container:before,md-radio-group.md-THEME_NAME-theme.md-focused:not(:empty).md-warn .md-checked .md-container:before{background-color:\"{{warn-color-0.26}}\"}md-sidenav.md-THEME_NAME-theme,md-sidenav.md-THEME_NAME-theme md-content{background-color:\"{{background-hue-1}}\"}md-input-container md-select.md-THEME_NAME-theme .md-select-value span:first-child:after{color:\"{{warn-A700}}\"}md-input-container:not(.md-input-focused):not(.md-input-invalid) md-select.md-THEME_NAME-theme .md-select-value span:first-child:after{color:\"{{foreground-3}}\"}md-input-container.md-input-focused:not(.md-input-has-value) md-select.md-THEME_NAME-theme .md-select-value,md-input-container.md-input-focused:not(.md-input-has-value) md-select.md-THEME_NAME-theme .md-select-value.md-select-placeholder{color:\"{{primary-color}}\"}md-input-container.md-input-invalid md-select.md-THEME_NAME-theme .md-select-value{color:\"{{warn-A700}}\"!important;border-bottom-color:\"{{warn-A700}}\"!important}md-input-container.md-input-invalid md-select.md-THEME_NAME-theme.md-no-underline .md-select-value{border-bottom-color:transparent!important}md-select.md-THEME_NAME-theme[disabled] .md-select-value{border-bottom-color:transparent;background-image:linear-gradient(90deg,\"{{foreground-3}}\" 0,\"{{foreground-3}}\" 33%,transparent 0);background-image:-ms-linear-gradient(left,transparent 0,\"{{foreground-3}}\" 100%)}md-select.md-THEME_NAME-theme .md-select-value{border-bottom-color:\"{{foreground-4}}\"}md-select.md-THEME_NAME-theme .md-select-value.md-select-placeholder{color:\"{{foreground-3}}\"}md-select.md-THEME_NAME-theme .md-select-value span:first-child:after{color:\"{{warn-A700}}\"}md-select.md-THEME_NAME-theme.md-no-underline .md-select-value{border-bottom-color:transparent!important}md-select.md-THEME_NAME-theme.ng-invalid.ng-touched .md-select-value{color:\"{{warn-A700}}\"!important;border-bottom-color:\"{{warn-A700}}\"!important}md-select.md-THEME_NAME-theme.ng-invalid.ng-touched.md-no-underline .md-select-value{border-bottom-color:transparent!important}md-select.md-THEME_NAME-theme:not([disabled]):focus .md-select-value{border-bottom-color:\"{{primary-color}}\";color:\"{{ foreground-1 }}\"}md-select.md-THEME_NAME-theme:not([disabled]):focus .md-select-value.md-select-placeholder{color:\"{{ foreground-1 }}\"}md-select.md-THEME_NAME-theme:not([disabled]):focus.md-no-underline .md-select-value{border-bottom-color:transparent!important}md-select.md-THEME_NAME-theme:not([disabled]):focus.md-accent .md-select-value{border-bottom-color:\"{{accent-color}}\"}md-select.md-THEME_NAME-theme:not([disabled]):focus.md-warn .md-select-value{border-bottom-color:\"{{warn-color}}\"}md-select.md-THEME_NAME-theme[disabled] .md-select-icon,md-select.md-THEME_NAME-theme[disabled] .md-select-value,md-select.md-THEME_NAME-theme[disabled] .md-select-value.md-select-placeholder{color:\"{{foreground-3}}\"}md-select.md-THEME_NAME-theme .md-select-icon{color:\"{{foreground-2}}\"}md-select-menu.md-THEME_NAME-theme md-content{background:\"{{background-A100}}\"}md-select-menu.md-THEME_NAME-theme md-content md-optgroup{color:\"{{background-600-0.87}}\"}md-select-menu.md-THEME_NAME-theme md-content md-option{color:\"{{background-900-0.87}}\"}md-select-menu.md-THEME_NAME-theme md-content md-option[disabled] .md-text{color:\"{{background-400-0.87}}\"}md-select-menu.md-THEME_NAME-theme md-content md-option:not([disabled]):focus,md-select-menu.md-THEME_NAME-theme md-content md-option:not([disabled]):hover{background:\"{{background-200}}\"}md-select-menu.md-THEME_NAME-theme md-content md-option[selected]{color:\"{{primary-500}}\"}md-select-menu.md-THEME_NAME-theme md-content md-option[selected]:focus{color:\"{{primary-600}}\"}md-select-menu.md-THEME_NAME-theme md-content md-option[selected].md-accent{color:\"{{accent-color}}\"}md-select-menu.md-THEME_NAME-theme md-content md-option[selected].md-accent:focus{color:\"{{accent-A700}}\"}.md-checkbox-enabled.md-THEME_NAME-theme .md-ripple{color:\"{{primary-600}}\"}.md-checkbox-enabled.md-THEME_NAME-theme[selected] .md-ripple{color:\"{{background-600}}\"}.md-checkbox-enabled.md-THEME_NAME-theme .md-ink-ripple{color:\"{{foreground-2}}\"}.md-checkbox-enabled.md-THEME_NAME-theme[selected] .md-ink-ripple{color:\"{{primary-color-0.87}}\"}.md-checkbox-enabled.md-THEME_NAME-theme:not(.md-checked) .md-icon{border-color:\"{{foreground-2}}\"}.md-checkbox-enabled.md-THEME_NAME-theme[selected] .md-icon{background-color:\"{{primary-color-0.87}}\"}.md-checkbox-enabled.md-THEME_NAME-theme[selected].md-focused .md-container:before{background-color:\"{{primary-color-0.26}}\"}.md-checkbox-enabled.md-THEME_NAME-theme[selected] .md-icon:after{border-color:\"{{primary-contrast-0.87}}\"}.md-checkbox-enabled.md-THEME_NAME-theme .md-indeterminate[disabled] .md-container{color:\"{{foreground-3}}\"}.md-checkbox-enabled.md-THEME_NAME-theme md-option .md-text{color:\"{{background-900-0.87}}\"}md-slider.md-THEME_NAME-theme .md-track{background-color:\"{{foreground-3}}\"}md-slider.md-THEME_NAME-theme .md-track-ticks{color:\"{{background-contrast}}\"}md-slider.md-THEME_NAME-theme .md-focus-ring{background-color:\"{{accent-A200-0.2}}\"}md-slider.md-THEME_NAME-theme .md-disabled-thumb{border-color:\"{{background-color}}\";background-color:\"{{background-color}}\"}md-slider.md-THEME_NAME-theme.md-min .md-thumb:after{background-color:\"{{background-color}}\";border-color:\"{{foreground-3}}\"}md-slider.md-THEME_NAME-theme.md-min .md-focus-ring{background-color:\"{{foreground-3-0.38}}\"}md-slider.md-THEME_NAME-theme.md-min[md-discrete] .md-thumb:after{background-color:\"{{background-contrast}}\";border-color:transparent}md-slider.md-THEME_NAME-theme.md-min[md-discrete] .md-sign{background-color:\"{{background-400}}\"}md-slider.md-THEME_NAME-theme.md-min[md-discrete] .md-sign:after{border-top-color:\"{{background-400}}\"}md-slider.md-THEME_NAME-theme.md-min[md-discrete][md-vertical] .md-sign:after{border-top-color:transparent;border-left-color:\"{{background-400}}\"}md-slider.md-THEME_NAME-theme .md-track.md-track-fill{background-color:\"{{accent-color}}\"}md-slider.md-THEME_NAME-theme .md-thumb:after{border-color:\"{{accent-color}}\";background-color:\"{{accent-color}}\"}md-slider.md-THEME_NAME-theme .md-sign{background-color:\"{{accent-color}}\"}md-slider.md-THEME_NAME-theme .md-sign:after{border-top-color:\"{{accent-color}}\"}md-slider.md-THEME_NAME-theme[md-vertical] .md-sign:after{border-top-color:transparent;border-left-color:\"{{accent-color}}\"}md-slider.md-THEME_NAME-theme .md-thumb-text{color:\"{{accent-contrast}}\"}md-slider.md-THEME_NAME-theme.md-warn .md-focus-ring{background-color:\"{{warn-200-0.38}}\"}md-slider.md-THEME_NAME-theme.md-warn .md-track.md-track-fill{background-color:\"{{warn-color}}\"}md-slider.md-THEME_NAME-theme.md-warn .md-thumb:after{border-color:\"{{warn-color}}\";background-color:\"{{warn-color}}\"}md-slider.md-THEME_NAME-theme.md-warn .md-sign{background-color:\"{{warn-color}}\"}md-slider.md-THEME_NAME-theme.md-warn .md-sign:after{border-top-color:\"{{warn-color}}\"}md-slider.md-THEME_NAME-theme.md-warn[md-vertical] .md-sign:after{border-top-color:transparent;border-left-color:\"{{warn-color}}\"}md-slider.md-THEME_NAME-theme.md-warn .md-thumb-text{color:\"{{warn-contrast}}\"}md-slider.md-THEME_NAME-theme.md-primary .md-focus-ring{background-color:\"{{primary-200-0.38}}\"}md-slider.md-THEME_NAME-theme.md-primary .md-track.md-track-fill{background-color:\"{{primary-color}}\"}md-slider.md-THEME_NAME-theme.md-primary .md-thumb:after{border-color:\"{{primary-color}}\";background-color:\"{{primary-color}}\"}md-slider.md-THEME_NAME-theme.md-primary .md-sign{background-color:\"{{primary-color}}\"}md-slider.md-THEME_NAME-theme.md-primary .md-sign:after{border-top-color:\"{{primary-color}}\"}md-slider.md-THEME_NAME-theme.md-primary[md-vertical] .md-sign:after{border-top-color:transparent;border-left-color:\"{{primary-color}}\"}md-slider.md-THEME_NAME-theme.md-primary .md-thumb-text{color:\"{{primary-contrast}}\"}md-slider.md-THEME_NAME-theme[disabled] .md-thumb:after{border-color:transparent}md-slider.md-THEME_NAME-theme[disabled]:not(.md-min) .md-thumb:after,md-slider.md-THEME_NAME-theme[disabled][md-discrete] .md-thumb:after{background-color:\"{{foreground-3}}\";border-color:transparent}md-slider.md-THEME_NAME-theme[disabled][readonly] .md-sign{background-color:\"{{background-400}}\"}md-slider.md-THEME_NAME-theme[disabled][readonly] .md-sign:after{border-top-color:\"{{background-400}}\"}md-slider.md-THEME_NAME-theme[disabled][readonly][md-vertical] .md-sign:after{border-top-color:transparent;border-left-color:\"{{background-400}}\"}md-slider.md-THEME_NAME-theme[disabled][readonly] .md-disabled-thumb{border-color:transparent;background-color:transparent}md-slider-container[disabled]>:first-child:not(md-slider),md-slider-container[disabled]>:last-child:not(md-slider){color:\"{{foreground-3}}\"}.md-subheader.md-THEME_NAME-theme{color:\"{{ foreground-2-0.23 }}\";background-color:\"{{background-default}}\"}.md-subheader.md-THEME_NAME-theme.md-primary{color:\"{{primary-color}}\"}.md-subheader.md-THEME_NAME-theme.md-accent{color:\"{{accent-color}}\"}.md-subheader.md-THEME_NAME-theme.md-warn{color:\"{{warn-color}}\"}md-switch.md-THEME_NAME-theme .md-ink-ripple{color:\"{{background-500}}\"}md-switch.md-THEME_NAME-theme .md-thumb{background-color:\"{{background-50}}\"}md-switch.md-THEME_NAME-theme .md-bar{background-color:\"{{background-500}}\"}md-switch.md-THEME_NAME-theme.md-checked .md-ink-ripple{color:\"{{accent-color}}\"}md-switch.md-THEME_NAME-theme.md-checked .md-thumb{background-color:\"{{accent-color}}\"}md-switch.md-THEME_NAME-theme.md-checked .md-bar{background-color:\"{{accent-color-0.5}}\"}md-switch.md-THEME_NAME-theme.md-checked.md-focused .md-thumb:before{background-color:\"{{accent-color-0.26}}\"}md-switch.md-THEME_NAME-theme.md-checked.md-primary .md-ink-ripple{color:\"{{primary-color}}\"}md-switch.md-THEME_NAME-theme.md-checked.md-primary .md-thumb{background-color:\"{{primary-color}}\"}md-switch.md-THEME_NAME-theme.md-checked.md-primary .md-bar{background-color:\"{{primary-color-0.5}}\"}md-switch.md-THEME_NAME-theme.md-checked.md-primary.md-focused .md-thumb:before{background-color:\"{{primary-color-0.26}}\"}md-switch.md-THEME_NAME-theme.md-checked.md-warn .md-ink-ripple{color:\"{{warn-color}}\"}md-switch.md-THEME_NAME-theme.md-checked.md-warn .md-thumb{background-color:\"{{warn-color}}\"}md-switch.md-THEME_NAME-theme.md-checked.md-warn .md-bar{background-color:\"{{warn-color-0.5}}\"}md-switch.md-THEME_NAME-theme.md-checked.md-warn.md-focused .md-thumb:before{background-color:\"{{warn-color-0.26}}\"}md-switch.md-THEME_NAME-theme[disabled] .md-thumb{background-color:\"{{background-400}}\"}md-switch.md-THEME_NAME-theme[disabled] .md-bar{background-color:\"{{foreground-4}}\"}md-tabs.md-THEME_NAME-theme md-tabs-wrapper{background-color:transparent;border-color:\"{{foreground-4}}\"}md-tabs.md-THEME_NAME-theme .md-paginator md-icon{color:\"{{primary-color}}\"}md-tabs.md-THEME_NAME-theme md-ink-bar{color:\"{{accent-color}}\";background:\"{{accent-color}}\"}md-tabs.md-THEME_NAME-theme .md-tab{color:\"{{foreground-2}}\"}md-tabs.md-THEME_NAME-theme .md-tab[disabled],md-tabs.md-THEME_NAME-theme .md-tab[disabled] md-icon{color:\"{{foreground-3}}\"}md-tabs.md-THEME_NAME-theme .md-tab.md-active,md-tabs.md-THEME_NAME-theme .md-tab.md-active md-icon,md-tabs.md-THEME_NAME-theme .md-tab.md-focused,md-tabs.md-THEME_NAME-theme .md-tab.md-focused md-icon{color:\"{{primary-color}}\"}md-tabs.md-THEME_NAME-theme .md-tab.md-focused{background:\"{{primary-color-0.1}}\"}md-tabs.md-THEME_NAME-theme .md-tab .md-ripple-container{color:\"{{accent-A100}}\"}md-tabs.md-THEME_NAME-theme.md-accent>md-tabs-wrapper{background-color:\"{{accent-color}}\"}md-tabs.md-THEME_NAME-theme.md-accent>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]),md-tabs.md-THEME_NAME-theme.md-accent>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]) md-icon{color:\"{{accent-A100}}\"}md-tabs.md-THEME_NAME-theme.md-accent>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-active,md-tabs.md-THEME_NAME-theme.md-accent>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-active md-icon,md-tabs.md-THEME_NAME-theme.md-accent>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused,md-tabs.md-THEME_NAME-theme.md-accent>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused md-icon{color:\"{{accent-contrast}}\"}md-tabs.md-THEME_NAME-theme.md-accent>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused{background:\"{{accent-contrast-0.1}}\"}md-tabs.md-THEME_NAME-theme.md-accent>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-ink-bar{color:\"{{primary-600-1}}\";background:\"{{primary-600-1}}\"}md-tabs.md-THEME_NAME-theme.md-primary>md-tabs-wrapper{background-color:\"{{primary-color}}\"}md-tabs.md-THEME_NAME-theme.md-primary>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]),md-tabs.md-THEME_NAME-theme.md-primary>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]) md-icon{color:\"{{primary-100}}\"}md-tabs.md-THEME_NAME-theme.md-primary>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-active,md-tabs.md-THEME_NAME-theme.md-primary>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-active md-icon,md-tabs.md-THEME_NAME-theme.md-primary>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused,md-tabs.md-THEME_NAME-theme.md-primary>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused md-icon{color:\"{{primary-contrast}}\"}md-tabs.md-THEME_NAME-theme.md-primary>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused{background:\"{{primary-contrast-0.1}}\"}md-tabs.md-THEME_NAME-theme.md-warn>md-tabs-wrapper{background-color:\"{{warn-color}}\"}md-tabs.md-THEME_NAME-theme.md-warn>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]),md-tabs.md-THEME_NAME-theme.md-warn>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]) md-icon{color:\"{{warn-100}}\"}md-tabs.md-THEME_NAME-theme.md-warn>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-active,md-tabs.md-THEME_NAME-theme.md-warn>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-active md-icon,md-tabs.md-THEME_NAME-theme.md-warn>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused,md-tabs.md-THEME_NAME-theme.md-warn>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused md-icon{color:\"{{warn-contrast}}\"}md-tabs.md-THEME_NAME-theme.md-warn>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused{background:\"{{warn-contrast-0.1}}\"}md-toolbar>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper{background-color:\"{{primary-color}}\"}md-toolbar>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]),md-toolbar>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]) md-icon{color:\"{{primary-100}}\"}md-toolbar>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-active,md-toolbar>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-active md-icon,md-toolbar>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused,md-toolbar>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused md-icon{color:\"{{primary-contrast}}\"}md-toolbar>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused{background:\"{{primary-contrast-0.1}}\"}md-toolbar.md-accent>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper{background-color:\"{{accent-color}}\"}md-toolbar.md-accent>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]),md-toolbar.md-accent>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]) md-icon{color:\"{{accent-A100}}\"}md-toolbar.md-accent>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-active,md-toolbar.md-accent>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-active md-icon,md-toolbar.md-accent>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused,md-toolbar.md-accent>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused md-icon{color:\"{{accent-contrast}}\"}md-toolbar.md-accent>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused{background:\"{{accent-contrast-0.1}}\"}md-toolbar.md-accent>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-ink-bar{color:\"{{primary-600-1}}\";background:\"{{primary-600-1}}\"}md-toolbar.md-warn>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper{background-color:\"{{warn-color}}\"}md-toolbar.md-warn>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]),md-toolbar.md-warn>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]) md-icon{color:\"{{warn-100}}\"}md-toolbar.md-warn>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-active,md-toolbar.md-warn>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-active md-icon,md-toolbar.md-warn>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused,md-toolbar.md-warn>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused md-icon{color:\"{{warn-contrast}}\"}md-toolbar.md-warn>md-tabs.md-THEME_NAME-theme>md-tabs-wrapper>md-tabs-canvas>md-pagination-wrapper>md-tab-item:not([disabled]).md-focused{background:\"{{warn-contrast-0.1}}\"}md-toast.md-THEME_NAME-theme .md-toast-content{background-color:#323232;color:\"{{background-50}}\"}md-toast.md-THEME_NAME-theme .md-toast-content .md-button{color:\"{{background-50}}\"}md-toast.md-THEME_NAME-theme .md-toast-content .md-button.md-highlight{color:\"{{accent-color}}\"}md-toast.md-THEME_NAME-theme .md-toast-content .md-button.md-highlight.md-primary{color:\"{{primary-color}}\"}md-toast.md-THEME_NAME-theme .md-toast-content .md-button.md-highlight.md-warn{color:\"{{warn-color}}\"}md-toolbar.md-THEME_NAME-theme:not(.md-menu-toolbar){background-color:\"{{primary-color}}\";color:\"{{primary-contrast}}\"}md-toolbar.md-THEME_NAME-theme:not(.md-menu-toolbar) md-icon{color:\"{{primary-contrast}}\";fill:\"{{primary-contrast}}\"}md-toolbar.md-THEME_NAME-theme:not(.md-menu-toolbar) .md-button[disabled] md-icon{color:\"{{primary-contrast-0.26}}\";fill:\"{{primary-contrast-0.26}}\"}md-toolbar.md-THEME_NAME-theme:not(.md-menu-toolbar).md-accent{background-color:\"{{accent-color}}\";color:\"{{accent-contrast}}\"}md-toolbar.md-THEME_NAME-theme:not(.md-menu-toolbar).md-accent .md-ink-ripple{color:\"{{accent-contrast}}\"}md-toolbar.md-THEME_NAME-theme:not(.md-menu-toolbar).md-accent md-icon{color:\"{{accent-contrast}}\";fill:\"{{accent-contrast}}\"}md-toolbar.md-THEME_NAME-theme:not(.md-menu-toolbar).md-accent .md-button[disabled] md-icon{color:\"{{accent-contrast-0.26}}\";fill:\"{{accent-contrast-0.26}}\"}md-toolbar.md-THEME_NAME-theme:not(.md-menu-toolbar).md-warn{background-color:\"{{warn-color}}\";color:\"{{warn-contrast}}\"}.md-panel.md-tooltip.md-THEME_NAME-theme{color:\"{{background-700-contrast}}\";background-color:\"{{background-700}}\"}body.md-THEME_NAME-theme,html.md-THEME_NAME-theme{color:\"{{foreground-1}}\";background-color:\"{{background-color}}\"}"); 
 })();
 
 
-})(window, window.angular);;window.ngMaterial={version:{full: "1.1.3"}};
-/**
- * @license AngularJS v1.6.2
- * (c) 2010-2017 Google, Inc. http://angularjs.org
- * License: MIT
- */
-(function(window, angular) {
-
-'use strict';
-
-/**
- * @ngdoc object
- * @name angular.mock
- * @description
- *
- * Namespace from 'angular-mocks.js' which contains testing related code.
- *
- */
-angular.mock = {};
-
-/**
- * ! This is a private undocumented service !
- *
- * @name $browser
- *
- * @description
- * This service is a mock implementation of {@link ng.$browser}. It provides fake
- * implementation for commonly used browser apis that are hard to test, e.g. setTimeout, xhr,
- * cookies, etc.
- *
- * The api of this service is the same as that of the real {@link ng.$browser $browser}, except
- * that there are several helper methods available which can be used in tests.
- */
-angular.mock.$BrowserProvider = function() {
-  this.$get = function() {
-    return new angular.mock.$Browser();
-  };
-};
-
-angular.mock.$Browser = function() {
-  var self = this;
-
-  this.isMock = true;
-  self.$$url = 'http://server/';
-  self.$$lastUrl = self.$$url; // used by url polling fn
-  self.pollFns = [];
-
-  // Testability API
-
-  var outstandingRequestCount = 0;
-  var outstandingRequestCallbacks = [];
-  self.$$incOutstandingRequestCount = function() { outstandingRequestCount++; };
-  self.$$completeOutstandingRequest = function(fn) {
-    try {
-      fn();
-    } finally {
-      outstandingRequestCount--;
-      if (!outstandingRequestCount) {
-        while (outstandingRequestCallbacks.length) {
-          outstandingRequestCallbacks.pop()();
-        }
-      }
-    }
-  };
-  self.notifyWhenNoOutstandingRequests = function(callback) {
-    if (outstandingRequestCount) {
-      outstandingRequestCallbacks.push(callback);
-    } else {
-      callback();
-    }
-  };
-
-  // register url polling fn
-
-  self.onUrlChange = function(listener) {
-    self.pollFns.push(
-      function() {
-        if (self.$$lastUrl !== self.$$url || self.$$state !== self.$$lastState) {
-          self.$$lastUrl = self.$$url;
-          self.$$lastState = self.$$state;
-          listener(self.$$url, self.$$state);
-        }
-      }
-    );
-
-    return listener;
-  };
-
-  self.$$applicationDestroyed = angular.noop;
-  self.$$checkUrlChange = angular.noop;
-
-  self.deferredFns = [];
-  self.deferredNextId = 0;
-
-  self.defer = function(fn, delay) {
-    // Note that we do not use `$$incOutstandingRequestCount` or `$$completeOutstandingRequest`
-    // in this mock implementation.
-    delay = delay || 0;
-    self.deferredFns.push({time:(self.defer.now + delay), fn:fn, id: self.deferredNextId});
-    self.deferredFns.sort(function(a, b) { return a.time - b.time;});
-    return self.deferredNextId++;
-  };
-
-
-  /**
-   * @name $browser#defer.now
-   *
-   * @description
-   * Current milliseconds mock time.
-   */
-  self.defer.now = 0;
-
-
-  self.defer.cancel = function(deferId) {
-    var fnIndex;
-
-    angular.forEach(self.deferredFns, function(fn, index) {
-      if (fn.id === deferId) fnIndex = index;
-    });
-
-    if (angular.isDefined(fnIndex)) {
-      self.deferredFns.splice(fnIndex, 1);
-      return true;
-    }
-
-    return false;
-  };
-
-
-  /**
-   * @name $browser#defer.flush
-   *
-   * @description
-   * Flushes all pending requests and executes the defer callbacks.
-   *
-   * @param {number=} number of milliseconds to flush. See {@link #defer.now}
-   */
-  self.defer.flush = function(delay) {
-    var nextTime;
-
-    if (angular.isDefined(delay)) {
-      // A delay was passed so compute the next time
-      nextTime = self.defer.now + delay;
-    } else {
-      if (self.deferredFns.length) {
-        // No delay was passed so set the next time so that it clears the deferred queue
-        nextTime = self.deferredFns[self.deferredFns.length - 1].time;
-      } else {
-        // No delay passed, but there are no deferred tasks so flush - indicates an error!
-        throw new Error('No deferred tasks to be flushed');
-      }
-    }
-
-    while (self.deferredFns.length && self.deferredFns[0].time <= nextTime) {
-      // Increment the time and call the next deferred function
-      self.defer.now = self.deferredFns[0].time;
-      self.deferredFns.shift().fn();
-    }
-
-    // Ensure that the current time is correct
-    self.defer.now = nextTime;
-  };
-
-  self.$$baseHref = '/';
-  self.baseHref = function() {
-    return this.$$baseHref;
-  };
-};
-angular.mock.$Browser.prototype = {
-
-  /**
-   * @name $browser#poll
-   *
-   * @description
-   * run all fns in pollFns
-   */
-  poll: function poll() {
-    angular.forEach(this.pollFns, function(pollFn) {
-      pollFn();
-    });
-  },
-
-  url: function(url, replace, state) {
-    if (angular.isUndefined(state)) {
-      state = null;
-    }
-    if (url) {
-      this.$$url = url;
-      // Native pushState serializes & copies the object; simulate it.
-      this.$$state = angular.copy(state);
-      return this;
-    }
-
-    return this.$$url;
-  },
-
-  state: function() {
-    return this.$$state;
-  }
-};
-
-
-/**
- * @ngdoc provider
- * @name $exceptionHandlerProvider
- *
- * @description
- * Configures the mock implementation of {@link ng.$exceptionHandler} to rethrow or to log errors
- * passed to the `$exceptionHandler`.
- */
-
-/**
- * @ngdoc service
- * @name $exceptionHandler
- *
- * @description
- * Mock implementation of {@link ng.$exceptionHandler} that rethrows or logs errors passed
- * to it. See {@link ngMock.$exceptionHandlerProvider $exceptionHandlerProvider} for configuration
- * information.
- *
- *
- * ```js
- *   describe('$exceptionHandlerProvider', function() {
- *
- *     it('should capture log messages and exceptions', function() {
- *
- *       module(function($exceptionHandlerProvider) {
- *         $exceptionHandlerProvider.mode('log');
- *       });
- *
- *       inject(function($log, $exceptionHandler, $timeout) {
- *         $timeout(function() { $log.log(1); });
- *         $timeout(function() { $log.log(2); throw 'banana peel'; });
- *         $timeout(function() { $log.log(3); });
- *         expect($exceptionHandler.errors).toEqual([]);
- *         expect($log.assertEmpty());
- *         $timeout.flush();
- *         expect($exceptionHandler.errors).toEqual(['banana peel']);
- *         expect($log.log.logs).toEqual([[1], [2], [3]]);
- *       });
- *     });
- *   });
- * ```
- */
-
-angular.mock.$ExceptionHandlerProvider = function() {
-  var handler;
-
-  /**
-   * @ngdoc method
-   * @name $exceptionHandlerProvider#mode
-   *
-   * @description
-   * Sets the logging mode.
-   *
-   * @param {string} mode Mode of operation, defaults to `rethrow`.
-   *
-   *   - `log`: Sometimes it is desirable to test that an error is thrown, for this case the `log`
-   *     mode stores an array of errors in `$exceptionHandler.errors`, to allow later assertion of
-   *     them. See {@link ngMock.$log#assertEmpty assertEmpty()} and
-   *     {@link ngMock.$log#reset reset()}.
-   *   - `rethrow`: If any errors are passed to the handler in tests, it typically means that there
-   *     is a bug in the application or test, so this mock will make these tests fail. For any
-   *     implementations that expect exceptions to be thrown, the `rethrow` mode will also maintain
-   *     a log of thrown errors in `$exceptionHandler.errors`.
-   */
-  this.mode = function(mode) {
-
-    switch (mode) {
-      case 'log':
-      case 'rethrow':
-        var errors = [];
-        handler = function(e) {
-          if (arguments.length === 1) {
-            errors.push(e);
-          } else {
-            errors.push([].slice.call(arguments, 0));
-          }
-          if (mode === 'rethrow') {
-            throw e;
-          }
-        };
-        handler.errors = errors;
-        break;
-      default:
-        throw new Error('Unknown mode \'' + mode + '\', only \'log\'/\'rethrow\' modes are allowed!');
-    }
-  };
-
-  this.$get = function() {
-    return handler;
-  };
-
-  this.mode('rethrow');
-};
-
-
-/**
- * @ngdoc service
- * @name $log
- *
- * @description
- * Mock implementation of {@link ng.$log} that gathers all logged messages in arrays
- * (one array per logging level). These arrays are exposed as `logs` property of each of the
- * level-specific log function, e.g. for level `error` the array is exposed as `$log.error.logs`.
- *
- */
-angular.mock.$LogProvider = function() {
-  var debug = true;
-
-  function concat(array1, array2, index) {
-    return array1.concat(Array.prototype.slice.call(array2, index));
-  }
-
-  this.debugEnabled = function(flag) {
-    if (angular.isDefined(flag)) {
-      debug = flag;
-      return this;
-    } else {
-      return debug;
-    }
-  };
-
-  this.$get = function() {
-    var $log = {
-      log: function() { $log.log.logs.push(concat([], arguments, 0)); },
-      warn: function() { $log.warn.logs.push(concat([], arguments, 0)); },
-      info: function() { $log.info.logs.push(concat([], arguments, 0)); },
-      error: function() { $log.error.logs.push(concat([], arguments, 0)); },
-      debug: function() {
-        if (debug) {
-          $log.debug.logs.push(concat([], arguments, 0));
-        }
-      }
-    };
-
-    /**
-     * @ngdoc method
-     * @name $log#reset
-     *
-     * @description
-     * Reset all of the logging arrays to empty.
-     */
-    $log.reset = function() {
-      /**
-       * @ngdoc property
-       * @name $log#log.logs
-       *
-       * @description
-       * Array of messages logged using {@link ng.$log#log `log()`}.
-       *
-       * @example
-       * ```js
-       * $log.log('Some Log');
-       * var first = $log.log.logs.unshift();
-       * ```
-       */
-      $log.log.logs = [];
-      /**
-       * @ngdoc property
-       * @name $log#info.logs
-       *
-       * @description
-       * Array of messages logged using {@link ng.$log#info `info()`}.
-       *
-       * @example
-       * ```js
-       * $log.info('Some Info');
-       * var first = $log.info.logs.unshift();
-       * ```
-       */
-      $log.info.logs = [];
-      /**
-       * @ngdoc property
-       * @name $log#warn.logs
-       *
-       * @description
-       * Array of messages logged using {@link ng.$log#warn `warn()`}.
-       *
-       * @example
-       * ```js
-       * $log.warn('Some Warning');
-       * var first = $log.warn.logs.unshift();
-       * ```
-       */
-      $log.warn.logs = [];
-      /**
-       * @ngdoc property
-       * @name $log#error.logs
-       *
-       * @description
-       * Array of messages logged using {@link ng.$log#error `error()`}.
-       *
-       * @example
-       * ```js
-       * $log.error('Some Error');
-       * var first = $log.error.logs.unshift();
-       * ```
-       */
-      $log.error.logs = [];
-        /**
-       * @ngdoc property
-       * @name $log#debug.logs
-       *
-       * @description
-       * Array of messages logged using {@link ng.$log#debug `debug()`}.
-       *
-       * @example
-       * ```js
-       * $log.debug('Some Error');
-       * var first = $log.debug.logs.unshift();
-       * ```
-       */
-      $log.debug.logs = [];
-    };
-
-    /**
-     * @ngdoc method
-     * @name $log#assertEmpty
-     *
-     * @description
-     * Assert that all of the logging methods have no logged messages. If any messages are present,
-     * an exception is thrown.
-     */
-    $log.assertEmpty = function() {
-      var errors = [];
-      angular.forEach(['error', 'warn', 'info', 'log', 'debug'], function(logLevel) {
-        angular.forEach($log[logLevel].logs, function(log) {
-          angular.forEach(log, function(logItem) {
-            errors.push('MOCK $log (' + logLevel + '): ' + String(logItem) + '\n' +
-                        (logItem.stack || ''));
-          });
-        });
-      });
-      if (errors.length) {
-        errors.unshift('Expected $log to be empty! Either a message was logged unexpectedly, or ' +
-          'an expected log message was not checked and removed:');
-        errors.push('');
-        throw new Error(errors.join('\n---------\n'));
-      }
-    };
-
-    $log.reset();
-    return $log;
-  };
-};
-
-
-/**
- * @ngdoc service
- * @name $interval
- *
- * @description
- * Mock implementation of the $interval service.
- *
- * Use {@link ngMock.$interval#flush `$interval.flush(millis)`} to
- * move forward by `millis` milliseconds and trigger any functions scheduled to run in that
- * time.
- *
- * @param {function()} fn A function that should be called repeatedly.
- * @param {number} delay Number of milliseconds between each function call.
- * @param {number=} [count=0] Number of times to repeat. If not set, or 0, will repeat
- *   indefinitely.
- * @param {boolean=} [invokeApply=true] If set to `false` skips model dirty checking, otherwise
- *   will invoke `fn` within the {@link ng.$rootScope.Scope#$apply $apply} block.
- * @param {...*=} Pass additional parameters to the executed function.
- * @returns {promise} A promise which will be notified on each iteration.
- */
-angular.mock.$IntervalProvider = function() {
-  this.$get = ['$browser', '$rootScope', '$q', '$$q',
-       function($browser,   $rootScope,   $q,   $$q) {
-    var repeatFns = [],
-        nextRepeatId = 0,
-        now = 0;
-
-    var $interval = function(fn, delay, count, invokeApply) {
-      var hasParams = arguments.length > 4,
-          args = hasParams ? Array.prototype.slice.call(arguments, 4) : [],
-          iteration = 0,
-          skipApply = (angular.isDefined(invokeApply) && !invokeApply),
-          deferred = (skipApply ? $$q : $q).defer(),
-          promise = deferred.promise;
-
-      count = (angular.isDefined(count)) ? count : 0;
-      promise.then(null, function() {}, (!hasParams) ? fn : function() {
-        fn.apply(null, args);
-      });
-
-      promise.$$intervalId = nextRepeatId;
-
-      function tick() {
-        deferred.notify(iteration++);
-
-        if (count > 0 && iteration >= count) {
-          var fnIndex;
-          deferred.resolve(iteration);
-
-          angular.forEach(repeatFns, function(fn, index) {
-            if (fn.id === promise.$$intervalId) fnIndex = index;
-          });
-
-          if (angular.isDefined(fnIndex)) {
-            repeatFns.splice(fnIndex, 1);
-          }
-        }
-
-        if (skipApply) {
-          $browser.defer.flush();
-        } else {
-          $rootScope.$apply();
-        }
-      }
-
-      repeatFns.push({
-        nextTime:(now + delay),
-        delay: delay,
-        fn: tick,
-        id: nextRepeatId,
-        deferred: deferred
-      });
-      repeatFns.sort(function(a, b) { return a.nextTime - b.nextTime;});
-
-      nextRepeatId++;
-      return promise;
-    };
-    /**
-     * @ngdoc method
-     * @name $interval#cancel
-     *
-     * @description
-     * Cancels a task associated with the `promise`.
-     *
-     * @param {promise} promise A promise from calling the `$interval` function.
-     * @returns {boolean} Returns `true` if the task was successfully cancelled.
-     */
-    $interval.cancel = function(promise) {
-      if (!promise) return false;
-      var fnIndex;
-
-      angular.forEach(repeatFns, function(fn, index) {
-        if (fn.id === promise.$$intervalId) fnIndex = index;
-      });
-
-      if (angular.isDefined(fnIndex)) {
-        repeatFns[fnIndex].deferred.promise.then(undefined, function() {});
-        repeatFns[fnIndex].deferred.reject('canceled');
-        repeatFns.splice(fnIndex, 1);
-        return true;
-      }
-
-      return false;
-    };
-
-    /**
-     * @ngdoc method
-     * @name $interval#flush
-     * @description
-     *
-     * Runs interval tasks scheduled to be run in the next `millis` milliseconds.
-     *
-     * @param {number=} millis maximum timeout amount to flush up until.
-     *
-     * @return {number} The amount of time moved forward.
-     */
-    $interval.flush = function(millis) {
-      now += millis;
-      while (repeatFns.length && repeatFns[0].nextTime <= now) {
-        var task = repeatFns[0];
-        task.fn();
-        task.nextTime += task.delay;
-        repeatFns.sort(function(a, b) { return a.nextTime - b.nextTime;});
-      }
-      return millis;
-    };
-
-    return $interval;
-  }];
-};
-
-
-function jsonStringToDate(string) {
-  // The R_ISO8061_STR regex is never going to fit into the 100 char limit!
-  // eslit-disable-next-line max-len
-  var R_ISO8061_STR = /^(-?\d{4})-?(\d\d)-?(\d\d)(?:T(\d\d)(?::?(\d\d)(?::?(\d\d)(?:\.(\d{3}))?)?)?(Z|([+-])(\d\d):?(\d\d)))?$/;
-
-  var match;
-  if ((match = string.match(R_ISO8061_STR))) {
-    var date = new Date(0),
-        tzHour = 0,
-        tzMin  = 0;
-    if (match[9]) {
-      tzHour = toInt(match[9] + match[10]);
-      tzMin = toInt(match[9] + match[11]);
-    }
-    date.setUTCFullYear(toInt(match[1]), toInt(match[2]) - 1, toInt(match[3]));
-    date.setUTCHours(toInt(match[4] || 0) - tzHour,
-                     toInt(match[5] || 0) - tzMin,
-                     toInt(match[6] || 0),
-                     toInt(match[7] || 0));
-    return date;
-  }
-  return string;
-}
-
-function toInt(str) {
-  return parseInt(str, 10);
-}
-
-function padNumberInMock(num, digits, trim) {
-  var neg = '';
-  if (num < 0) {
-    neg =  '-';
-    num = -num;
-  }
-  num = '' + num;
-  while (num.length < digits) num = '0' + num;
-  if (trim) {
-    num = num.substr(num.length - digits);
-  }
-  return neg + num;
-}
-
-
-/**
- * @ngdoc type
- * @name angular.mock.TzDate
- * @description
- *
- * *NOTE*: this is not an injectable instance, just a globally available mock class of `Date`.
- *
- * Mock of the Date type which has its timezone specified via constructor arg.
- *
- * The main purpose is to create Date-like instances with timezone fixed to the specified timezone
- * offset, so that we can test code that depends on local timezone settings without dependency on
- * the time zone settings of the machine where the code is running.
- *
- * @param {number} offset Offset of the *desired* timezone in hours (fractions will be honored)
- * @param {(number|string)} timestamp Timestamp representing the desired time in *UTC*
- *
- * @example
- * !!!! WARNING !!!!!
- * This is not a complete Date object so only methods that were implemented can be called safely.
- * To make matters worse, TzDate instances inherit stuff from Date via a prototype.
- *
- * We do our best to intercept calls to "unimplemented" methods, but since the list of methods is
- * incomplete we might be missing some non-standard methods. This can result in errors like:
- * "Date.prototype.foo called on incompatible Object".
- *
- * ```js
- * var newYearInBratislava = new TzDate(-1, '2009-12-31T23:00:00Z');
- * newYearInBratislava.getTimezoneOffset() => -60;
- * newYearInBratislava.getFullYear() => 2010;
- * newYearInBratislava.getMonth() => 0;
- * newYearInBratislava.getDate() => 1;
- * newYearInBratislava.getHours() => 0;
- * newYearInBratislava.getMinutes() => 0;
- * newYearInBratislava.getSeconds() => 0;
- * ```
- *
- */
-angular.mock.TzDate = function(offset, timestamp) {
-  var self = new Date(0);
-  if (angular.isString(timestamp)) {
-    var tsStr = timestamp;
-
-    self.origDate = jsonStringToDate(timestamp);
-
-    timestamp = self.origDate.getTime();
-    if (isNaN(timestamp)) {
-      // eslint-disable-next-line no-throw-literal
-      throw {
-        name: 'Illegal Argument',
-        message: 'Arg \'' + tsStr + '\' passed into TzDate constructor is not a valid date string'
-      };
-    }
-  } else {
-    self.origDate = new Date(timestamp);
-  }
-
-  var localOffset = new Date(timestamp).getTimezoneOffset();
-  self.offsetDiff = localOffset * 60 * 1000 - offset * 1000 * 60 * 60;
-  self.date = new Date(timestamp + self.offsetDiff);
-
-  self.getTime = function() {
-    return self.date.getTime() - self.offsetDiff;
-  };
-
-  self.toLocaleDateString = function() {
-    return self.date.toLocaleDateString();
-  };
-
-  self.getFullYear = function() {
-    return self.date.getFullYear();
-  };
-
-  self.getMonth = function() {
-    return self.date.getMonth();
-  };
-
-  self.getDate = function() {
-    return self.date.getDate();
-  };
-
-  self.getHours = function() {
-    return self.date.getHours();
-  };
-
-  self.getMinutes = function() {
-    return self.date.getMinutes();
-  };
-
-  self.getSeconds = function() {
-    return self.date.getSeconds();
-  };
-
-  self.getMilliseconds = function() {
-    return self.date.getMilliseconds();
-  };
-
-  self.getTimezoneOffset = function() {
-    return offset * 60;
-  };
-
-  self.getUTCFullYear = function() {
-    return self.origDate.getUTCFullYear();
-  };
-
-  self.getUTCMonth = function() {
-    return self.origDate.getUTCMonth();
-  };
-
-  self.getUTCDate = function() {
-    return self.origDate.getUTCDate();
-  };
-
-  self.getUTCHours = function() {
-    return self.origDate.getUTCHours();
-  };
-
-  self.getUTCMinutes = function() {
-    return self.origDate.getUTCMinutes();
-  };
-
-  self.getUTCSeconds = function() {
-    return self.origDate.getUTCSeconds();
-  };
-
-  self.getUTCMilliseconds = function() {
-    return self.origDate.getUTCMilliseconds();
-  };
-
-  self.getDay = function() {
-    return self.date.getDay();
-  };
-
-  // provide this method only on browsers that already have it
-  if (self.toISOString) {
-    self.toISOString = function() {
-      return padNumberInMock(self.origDate.getUTCFullYear(), 4) + '-' +
-            padNumberInMock(self.origDate.getUTCMonth() + 1, 2) + '-' +
-            padNumberInMock(self.origDate.getUTCDate(), 2) + 'T' +
-            padNumberInMock(self.origDate.getUTCHours(), 2) + ':' +
-            padNumberInMock(self.origDate.getUTCMinutes(), 2) + ':' +
-            padNumberInMock(self.origDate.getUTCSeconds(), 2) + '.' +
-            padNumberInMock(self.origDate.getUTCMilliseconds(), 3) + 'Z';
-    };
-  }
-
-  //hide all methods not implemented in this mock that the Date prototype exposes
-  var unimplementedMethods = ['getUTCDay',
-      'getYear', 'setDate', 'setFullYear', 'setHours', 'setMilliseconds',
-      'setMinutes', 'setMonth', 'setSeconds', 'setTime', 'setUTCDate', 'setUTCFullYear',
-      'setUTCHours', 'setUTCMilliseconds', 'setUTCMinutes', 'setUTCMonth', 'setUTCSeconds',
-      'setYear', 'toDateString', 'toGMTString', 'toJSON', 'toLocaleFormat', 'toLocaleString',
-      'toLocaleTimeString', 'toSource', 'toString', 'toTimeString', 'toUTCString', 'valueOf'];
-
-  angular.forEach(unimplementedMethods, function(methodName) {
-    self[methodName] = function() {
-      throw new Error('Method \'' + methodName + '\' is not implemented in the TzDate mock');
-    };
-  });
-
-  return self;
-};
-
-//make "tzDateInstance instanceof Date" return true
-angular.mock.TzDate.prototype = Date.prototype;
-
-
-/**
- * @ngdoc service
- * @name $animate
- *
- * @description
- * Mock implementation of the {@link ng.$animate `$animate`} service. Exposes two additional methods
- * for testing animations.
- *
- * You need to require the `ngAnimateMock` module in your test suite for instance `beforeEach(module('ngAnimateMock'))`
- */
-angular.mock.animate = angular.module('ngAnimateMock', ['ng'])
-
-  .config(['$provide', function($provide) {
-
-    $provide.factory('$$forceReflow', function() {
-      function reflowFn() {
-        reflowFn.totalReflows++;
-      }
-      reflowFn.totalReflows = 0;
-      return reflowFn;
-    });
-
-    $provide.factory('$$animateAsyncRun', function() {
-      var queue = [];
-      var queueFn = function() {
-        return function(fn) {
-          queue.push(fn);
-        };
-      };
-      queueFn.flush = function() {
-        if (queue.length === 0) return false;
-
-        for (var i = 0; i < queue.length; i++) {
-          queue[i]();
-        }
-        queue = [];
-
-        return true;
-      };
-      return queueFn;
-    });
-
-    $provide.decorator('$$animateJs', ['$delegate', function($delegate) {
-      var runners = [];
-
-      var animateJsConstructor = function() {
-        var animator = $delegate.apply($delegate, arguments);
-        // If no javascript animation is found, animator is undefined
-        if (animator) {
-          runners.push(animator);
-        }
-        return animator;
-      };
-
-      animateJsConstructor.$closeAndFlush = function() {
-        runners.forEach(function(runner) {
-          runner.end();
-        });
-        runners = [];
-      };
-
-      return animateJsConstructor;
-    }]);
-
-    $provide.decorator('$animateCss', ['$delegate', function($delegate) {
-      var runners = [];
-
-      var animateCssConstructor = function(element, options) {
-        var animator = $delegate(element, options);
-        runners.push(animator);
-        return animator;
-      };
-
-      animateCssConstructor.$closeAndFlush = function() {
-        runners.forEach(function(runner) {
-          runner.end();
-        });
-        runners = [];
-      };
-
-      return animateCssConstructor;
-    }]);
-
-    $provide.decorator('$animate', ['$delegate', '$timeout', '$browser', '$$rAF', '$animateCss', '$$animateJs',
-                                    '$$forceReflow', '$$animateAsyncRun', '$rootScope',
-                            function($delegate,   $timeout,   $browser,   $$rAF,   $animateCss,   $$animateJs,
-                                     $$forceReflow,   $$animateAsyncRun,  $rootScope) {
-      var animate = {
-        queue: [],
-        cancel: $delegate.cancel,
-        on: $delegate.on,
-        off: $delegate.off,
-        pin: $delegate.pin,
-        get reflows() {
-          return $$forceReflow.totalReflows;
-        },
-        enabled: $delegate.enabled,
-        /**
-         * @ngdoc method
-         * @name $animate#closeAndFlush
-         * @description
-         *
-         * This method will close all pending animations (both {@link ngAnimate#javascript-based-animations Javascript}
-         * and {@link ngAnimate.$animateCss CSS}) and it will also flush any remaining animation frames and/or callbacks.
-         */
-        closeAndFlush: function() {
-          // we allow the flush command to swallow the errors
-          // because depending on whether CSS or JS animations are
-          // used, there may not be a RAF flush. The primary flush
-          // at the end of this function must throw an exception
-          // because it will track if there were pending animations
-          this.flush(true);
-          $animateCss.$closeAndFlush();
-          $$animateJs.$closeAndFlush();
-          this.flush();
-        },
-        /**
-         * @ngdoc method
-         * @name $animate#flush
-         * @description
-         *
-         * This method is used to flush the pending callbacks and animation frames to either start
-         * an animation or conclude an animation. Note that this will not actually close an
-         * actively running animation (see {@link ngMock.$animate#closeAndFlush `closeAndFlush()`} for that).
-         */
-        flush: function(hideErrors) {
-          $rootScope.$digest();
-
-          var doNextRun, somethingFlushed = false;
-          do {
-            doNextRun = false;
-
-            if ($$rAF.queue.length) {
-              $$rAF.flush();
-              doNextRun = somethingFlushed = true;
-            }
-
-            if ($$animateAsyncRun.flush()) {
-              doNextRun = somethingFlushed = true;
-            }
-          } while (doNextRun);
-
-          if (!somethingFlushed && !hideErrors) {
-            throw new Error('No pending animations ready to be closed or flushed');
-          }
-
-          $rootScope.$digest();
-        }
-      };
-
-      angular.forEach(
-        ['animate','enter','leave','move','addClass','removeClass','setClass'], function(method) {
-        animate[method] = function() {
-          animate.queue.push({
-            event: method,
-            element: arguments[0],
-            options: arguments[arguments.length - 1],
-            args: arguments
-          });
-          return $delegate[method].apply($delegate, arguments);
-        };
-      });
-
-      return animate;
-    }]);
-
-  }]);
-
-
-/**
- * @ngdoc function
- * @name angular.mock.dump
- * @description
- *
- * *NOTE*: This is not an injectable instance, just a globally available function.
- *
- * Method for serializing common angular objects (scope, elements, etc..) into strings.
- * It is useful for logging objects to the console when debugging.
- *
- * @param {*} object - any object to turn into string.
- * @return {string} a serialized string of the argument
- */
-angular.mock.dump = function(object) {
-  return serialize(object);
-
-  function serialize(object) {
-    var out;
-
-    if (angular.isElement(object)) {
-      object = angular.element(object);
-      out = angular.element('<div></div>');
-      angular.forEach(object, function(element) {
-        out.append(angular.element(element).clone());
-      });
-      out = out.html();
-    } else if (angular.isArray(object)) {
-      out = [];
-      angular.forEach(object, function(o) {
-        out.push(serialize(o));
-      });
-      out = '[ ' + out.join(', ') + ' ]';
-    } else if (angular.isObject(object)) {
-      if (angular.isFunction(object.$eval) && angular.isFunction(object.$apply)) {
-        out = serializeScope(object);
-      } else if (object instanceof Error) {
-        out = object.stack || ('' + object.name + ': ' + object.message);
-      } else {
-        // TODO(i): this prevents methods being logged,
-        // we should have a better way to serialize objects
-        out = angular.toJson(object, true);
-      }
-    } else {
-      out = String(object);
-    }
-
-    return out;
-  }
-
-  function serializeScope(scope, offset) {
-    offset = offset ||  '  ';
-    var log = [offset + 'Scope(' + scope.$id + '): {'];
-    for (var key in scope) {
-      if (Object.prototype.hasOwnProperty.call(scope, key) && !key.match(/^(\$|this)/)) {
-        log.push('  ' + key + ': ' + angular.toJson(scope[key]));
-      }
-    }
-    var child = scope.$$childHead;
-    while (child) {
-      log.push(serializeScope(child, offset + '  '));
-      child = child.$$nextSibling;
-    }
-    log.push('}');
-    return log.join('\n' + offset);
-  }
-};
-
-/**
- * @ngdoc service
- * @name $httpBackend
- * @description
- * Fake HTTP backend implementation suitable for unit testing applications that use the
- * {@link ng.$http $http service}.
- *
- * <div class="alert alert-info">
- * **Note**: For fake HTTP backend implementation suitable for end-to-end testing or backend-less
- * development please see {@link ngMockE2E.$httpBackend e2e $httpBackend mock}.
- * </div>
- *
- * During unit testing, we want our unit tests to run quickly and have no external dependencies so
- * we don’t want to send [XHR](https://developer.mozilla.org/en/xmlhttprequest) or
- * [JSONP](http://en.wikipedia.org/wiki/JSONP) requests to a real server. All we really need is
- * to verify whether a certain request has been sent or not, or alternatively just let the
- * application make requests, respond with pre-trained responses and assert that the end result is
- * what we expect it to be.
- *
- * This mock implementation can be used to respond with static or dynamic responses via the
- * `expect` and `when` apis and their shortcuts (`expectGET`, `whenPOST`, etc).
- *
- * When an Angular application needs some data from a server, it calls the $http service, which
- * sends the request to a real server using $httpBackend service. With dependency injection, it is
- * easy to inject $httpBackend mock (which has the same API as $httpBackend) and use it to verify
- * the requests and respond with some testing data without sending a request to a real server.
- *
- * There are two ways to specify what test data should be returned as http responses by the mock
- * backend when the code under test makes http requests:
- *
- * - `$httpBackend.expect` - specifies a request expectation
- * - `$httpBackend.when` - specifies a backend definition
- *
- *
- * ## Request Expectations vs Backend Definitions
- *
- * Request expectations provide a way to make assertions about requests made by the application and
- * to define responses for those requests. The test will fail if the expected requests are not made
- * or they are made in the wrong order.
- *
- * Backend definitions allow you to define a fake backend for your application which doesn't assert
- * if a particular request was made or not, it just returns a trained response if a request is made.
- * The test will pass whether or not the request gets made during testing.
- *
- *
- * <table class="table">
- *   <tr><th width="220px"></th><th>Request expectations</th><th>Backend definitions</th></tr>
- *   <tr>
- *     <th>Syntax</th>
- *     <td>.expect(...).respond(...)</td>
- *     <td>.when(...).respond(...)</td>
- *   </tr>
- *   <tr>
- *     <th>Typical usage</th>
- *     <td>strict unit tests</td>
- *     <td>loose (black-box) unit testing</td>
- *   </tr>
- *   <tr>
- *     <th>Fulfills multiple requests</th>
- *     <td>NO</td>
- *     <td>YES</td>
- *   </tr>
- *   <tr>
- *     <th>Order of requests matters</th>
- *     <td>YES</td>
- *     <td>NO</td>
- *   </tr>
- *   <tr>
- *     <th>Request required</th>
- *     <td>YES</td>
- *     <td>NO</td>
- *   </tr>
- *   <tr>
- *     <th>Response required</th>
- *     <td>optional (see below)</td>
- *     <td>YES</td>
- *   </tr>
- * </table>
- *
- * In cases where both backend definitions and request expectations are specified during unit
- * testing, the request expectations are evaluated first.
- *
- * If a request expectation has no response specified, the algorithm will search your backend
- * definitions for an appropriate response.
- *
- * If a request didn't match any expectation or if the expectation doesn't have the response
- * defined, the backend definitions are evaluated in sequential order to see if any of them match
- * the request. The response from the first matched definition is returned.
- *
- *
- * ## Flushing HTTP requests
- *
- * The $httpBackend used in production always responds to requests asynchronously. If we preserved
- * this behavior in unit testing, we'd have to create async unit tests, which are hard to write,
- * to follow and to maintain. But neither can the testing mock respond synchronously; that would
- * change the execution of the code under test. For this reason, the mock $httpBackend has a
- * `flush()` method, which allows the test to explicitly flush pending requests. This preserves
- * the async api of the backend, while allowing the test to execute synchronously.
- *
- *
- * ## Unit testing with mock $httpBackend
- * The following code shows how to setup and use the mock backend when unit testing a controller.
- * First we create the controller under test:
- *
-  ```js
-  // The module code
-  angular
-    .module('MyApp', [])
-    .controller('MyController', MyController);
-
-  // The controller code
-  function MyController($scope, $http) {
-    var authToken;
-
-    $http.get('/auth.py').then(function(response) {
-      authToken = response.headers('A-Token');
-      $scope.user = response.data;
-    });
-
-    $scope.saveMessage = function(message) {
-      var headers = { 'Authorization': authToken };
-      $scope.status = 'Saving...';
-
-      $http.post('/add-msg.py', message, { headers: headers } ).then(function(response) {
-        $scope.status = '';
-      }).catch(function() {
-        $scope.status = 'Failed...';
-      });
-    };
-  }
-  ```
- *
- * Now we setup the mock backend and create the test specs:
- *
-  ```js
-    // testing controller
-    describe('MyController', function() {
-       var $httpBackend, $rootScope, createController, authRequestHandler;
-
-       // Set up the module
-       beforeEach(module('MyApp'));
-
-       beforeEach(inject(function($injector) {
-         // Set up the mock http service responses
-         $httpBackend = $injector.get('$httpBackend');
-         // backend definition common for all tests
-         authRequestHandler = $httpBackend.when('GET', '/auth.py')
-                                .respond({userId: 'userX'}, {'A-Token': 'xxx'});
-
-         // Get hold of a scope (i.e. the root scope)
-         $rootScope = $injector.get('$rootScope');
-         // The $controller service is used to create instances of controllers
-         var $controller = $injector.get('$controller');
-
-         createController = function() {
-           return $controller('MyController', {'$scope' : $rootScope });
-         };
-       }));
-
-
-       afterEach(function() {
-         $httpBackend.verifyNoOutstandingExpectation();
-         $httpBackend.verifyNoOutstandingRequest();
-       });
-
-
-       it('should fetch authentication token', function() {
-         $httpBackend.expectGET('/auth.py');
-         var controller = createController();
-         $httpBackend.flush();
-       });
-
-
-       it('should fail authentication', function() {
-
-         // Notice how you can change the response even after it was set
-         authRequestHandler.respond(401, '');
-
-         $httpBackend.expectGET('/auth.py');
-         var controller = createController();
-         $httpBackend.flush();
-         expect($rootScope.status).toBe('Failed...');
-       });
-
-
-       it('should send msg to server', function() {
-         var controller = createController();
-         $httpBackend.flush();
-
-         // now you don’t care about the authentication, but
-         // the controller will still send the request and
-         // $httpBackend will respond without you having to
-         // specify the expectation and response for this request
-
-         $httpBackend.expectPOST('/add-msg.py', 'message content').respond(201, '');
-         $rootScope.saveMessage('message content');
-         expect($rootScope.status).toBe('Saving...');
-         $httpBackend.flush();
-         expect($rootScope.status).toBe('');
-       });
-
-
-       it('should send auth header', function() {
-         var controller = createController();
-         $httpBackend.flush();
-
-         $httpBackend.expectPOST('/add-msg.py', undefined, function(headers) {
-           // check if the header was sent, if it wasn't the expectation won't
-           // match the request and the test will fail
-           return headers['Authorization'] === 'xxx';
-         }).respond(201, '');
-
-         $rootScope.saveMessage('whatever');
-         $httpBackend.flush();
-       });
-    });
-  ```
- *
- * ## Dynamic responses
- *
- * You define a response to a request by chaining a call to `respond()` onto a definition or expectation.
- * If you provide a **callback** as the first parameter to `respond(callback)` then you can dynamically generate
- * a response based on the properties of the request.
- *
- * The `callback` function should be of the form `function(method, url, data, headers, params)`.
- *
- * ### Query parameters
- *
- * By default, query parameters on request URLs are parsed into the `params` object. So a request URL
- * of `/list?q=searchstr&orderby=-name` would set `params` to be `{q: 'searchstr', orderby: '-name'}`.
- *
- * ### Regex parameter matching
- *
- * If an expectation or definition uses a **regex** to match the URL, you can provide an array of **keys** via a
- * `params` argument. The index of each **key** in the array will match the index of a **group** in the
- * **regex**.
- *
- * The `params` object in the **callback** will now have properties with these keys, which hold the value of the
- * corresponding **group** in the **regex**.
- *
- * This also applies to the `when` and `expect` shortcut methods.
- *
- *
- * ```js
- *   $httpBackend.expect('GET', /\/user\/(.+)/, undefined, undefined, ['id'])
- *     .respond(function(method, url, data, headers, params) {
- *       // for requested url of '/user/1234' params is {id: '1234'}
- *     });
- *
- *   $httpBackend.whenPATCH(/\/user\/(.+)\/article\/(.+)/, undefined, undefined, ['user', 'article'])
- *     .respond(function(method, url, data, headers, params) {
- *       // for url of '/user/1234/article/567' params is {user: '1234', article: '567'}
- *     });
- * ```
- *
- * ## Matching route requests
- *
- * For extra convenience, `whenRoute` and `expectRoute` shortcuts are available. These methods offer colon
- * delimited matching of the url path, ignoring the query string. This allows declarations
- * similar to how application routes are configured with `$routeProvider`. Because these methods convert
- * the definition url to regex, declaration order is important. Combined with query parameter parsing,
- * the following is possible:
- *
-  ```js
-    $httpBackend.whenRoute('GET', '/users/:id')
-      .respond(function(method, url, data, headers, params) {
-        return [200, MockUserList[Number(params.id)]];
-      });
-
-    $httpBackend.whenRoute('GET', '/users')
-      .respond(function(method, url, data, headers, params) {
-        var userList = angular.copy(MockUserList),
-          defaultSort = 'lastName',
-          count, pages, isPrevious, isNext;
-
-        // paged api response '/v1/users?page=2'
-        params.page = Number(params.page) || 1;
-
-        // query for last names '/v1/users?q=Archer'
-        if (params.q) {
-          userList = $filter('filter')({lastName: params.q});
-        }
-
-        pages = Math.ceil(userList.length / pagingLength);
-        isPrevious = params.page > 1;
-        isNext = params.page < pages;
-
-        return [200, {
-          count:    userList.length,
-          previous: isPrevious,
-          next:     isNext,
-          // sort field -> '/v1/users?sortBy=firstName'
-          results:  $filter('orderBy')(userList, params.sortBy || defaultSort)
-                      .splice((params.page - 1) * pagingLength, pagingLength)
-        }];
-      });
-  ```
- */
-angular.mock.$httpBackendDecorator =
-  ['$rootScope', '$timeout', '$delegate', createHttpBackendMock];
-
-/**
- * General factory function for $httpBackend mock.
- * Returns instance for unit testing (when no arguments specified):
- *   - passing through is disabled
- *   - auto flushing is disabled
- *
- * Returns instance for e2e testing (when `$delegate` and `$browser` specified):
- *   - passing through (delegating request to real backend) is enabled
- *   - auto flushing is enabled
- *
- * @param {Object=} $delegate Real $httpBackend instance (allow passing through if specified)
- * @param {Object=} $browser Auto-flushing enabled if specified
- * @return {Object} Instance of $httpBackend mock
- */
-function createHttpBackendMock($rootScope, $timeout, $delegate, $browser) {
-  var definitions = [],
-      expectations = [],
-      responses = [],
-      responsesPush = angular.bind(responses, responses.push),
-      copy = angular.copy,
-      // We cache the original backend so that if both ngMock and ngMockE2E override the
-      // service the ngMockE2E version can pass through to the real backend
-      originalHttpBackend = $delegate.$$originalHttpBackend || $delegate;
-
-  function createResponse(status, data, headers, statusText) {
-    if (angular.isFunction(status)) return status;
-
-    return function() {
-      return angular.isNumber(status)
-          ? [status, data, headers, statusText]
-          : [200, status, data, headers];
-    };
-  }
-
-  // TODO(vojta): change params to: method, url, data, headers, callback
-  function $httpBackend(method, url, data, callback, headers, timeout, withCredentials, responseType, eventHandlers, uploadEventHandlers) {
-
-    var xhr = new MockXhr(),
-        expectation = expectations[0],
-        wasExpected = false;
-
-    xhr.$$events = eventHandlers;
-    xhr.upload.$$events = uploadEventHandlers;
-
-    function prettyPrint(data) {
-      return (angular.isString(data) || angular.isFunction(data) || data instanceof RegExp)
-          ? data
-          : angular.toJson(data);
-    }
-
-    function wrapResponse(wrapped) {
-      if (!$browser && timeout) {
-        if (timeout.then) {
-          timeout.then(handleTimeout);
-        } else {
-          $timeout(handleTimeout, timeout);
-        }
-      }
-
-      return handleResponse;
-
-      function handleResponse() {
-        var response = wrapped.response(method, url, data, headers, wrapped.params(url));
-        xhr.$$respHeaders = response[2];
-        callback(copy(response[0]), copy(response[1]), xhr.getAllResponseHeaders(),
-                 copy(response[3] || ''));
-      }
-
-      function handleTimeout() {
-        for (var i = 0, ii = responses.length; i < ii; i++) {
-          if (responses[i] === handleResponse) {
-            responses.splice(i, 1);
-            callback(-1, undefined, '');
-            break;
-          }
-        }
-      }
-    }
-
-    if (expectation && expectation.match(method, url)) {
-      if (!expectation.matchData(data)) {
-        throw new Error('Expected ' + expectation + ' with different data\n' +
-            'EXPECTED: ' + prettyPrint(expectation.data) + '\nGOT:      ' + data);
-      }
-
-      if (!expectation.matchHeaders(headers)) {
-        throw new Error('Expected ' + expectation + ' with different headers\n' +
-                        'EXPECTED: ' + prettyPrint(expectation.headers) + '\nGOT:      ' +
-                        prettyPrint(headers));
-      }
-
-      expectations.shift();
-
-      if (expectation.response) {
-        responses.push(wrapResponse(expectation));
-        return;
-      }
-      wasExpected = true;
-    }
-
-    var i = -1, definition;
-    while ((definition = definitions[++i])) {
-      if (definition.match(method, url, data, headers || {})) {
-        if (definition.response) {
-          // if $browser specified, we do auto flush all requests
-          ($browser ? $browser.defer : responsesPush)(wrapResponse(definition));
-        } else if (definition.passThrough) {
-          originalHttpBackend(method, url, data, callback, headers, timeout, withCredentials, responseType, eventHandlers, uploadEventHandlers);
-        } else throw new Error('No response defined !');
-        return;
-      }
-    }
-    throw wasExpected ?
-        new Error('No response defined !') :
-        new Error('Unexpected request: ' + method + ' ' + url + '\n' +
-                  (expectation ? 'Expected ' + expectation : 'No more request expected'));
-  }
-
-  /**
-   * @ngdoc method
-   * @name $httpBackend#when
-   * @description
-   * Creates a new backend definition.
-   *
-   * @param {string} method HTTP method.
-   * @param {string|RegExp|function(string)=} url HTTP url or function that receives a url
-   *   and returns true if the url matches the current definition.
-   * @param {(string|RegExp|function(string))=} data HTTP request body or function that receives
-   *   data string and returns true if the data is as expected.
-   * @param {(Object|function(Object))=} headers HTTP headers or function that receives http header
-   *   object and returns true if the headers match the current definition.
-   * @param {(Array)=} keys Array of keys to assign to regex matches in request url described above.
-   * @returns {requestHandler} Returns an object with `respond` method that controls how a matched
-   *   request is handled. You can save this object for later use and invoke `respond` again in
-   *   order to change how a matched request is handled.
-   *
-   *  - respond –
-   *      ```js
-   *      {function([status,] data[, headers, statusText])
-   *      | function(function(method, url, data, headers, params)}
-   *      ```
-   *    – The respond method takes a set of static data to be returned or a function that can
-   *    return an array containing response status (number), response data (Array|Object|string),
-   *    response headers (Object), and the text for the status (string). The respond method returns
-   *    the `requestHandler` object for possible overrides.
-   */
-  $httpBackend.when = function(method, url, data, headers, keys) {
-
-    assertArgDefined(arguments, 1, 'url');
-
-    var definition = new MockHttpExpectation(method, url, data, headers, keys),
-        chain = {
-          respond: function(status, data, headers, statusText) {
-            definition.passThrough = undefined;
-            definition.response = createResponse(status, data, headers, statusText);
-            return chain;
-          }
-        };
-
-    if ($browser) {
-      chain.passThrough = function() {
-        definition.response = undefined;
-        definition.passThrough = true;
-        return chain;
-      };
-    }
-
-    definitions.push(definition);
-    return chain;
-  };
-
-  /**
-   * @ngdoc method
-   * @name $httpBackend#whenGET
-   * @description
-   * Creates a new backend definition for GET requests. For more info see `when()`.
-   *
-   * @param {string|RegExp|function(string)=} url HTTP url or function that receives a url
-   *   and returns true if the url matches the current definition.
-   * @param {(Object|function(Object))=} headers HTTP headers.
-   * @param {(Array)=} keys Array of keys to assign to regex matches in request url described above.
-   * @returns {requestHandler} Returns an object with `respond` method that controls how a matched
-   * request is handled. You can save this object for later use and invoke `respond` again in
-   * order to change how a matched request is handled.
-   */
-
-  /**
-   * @ngdoc method
-   * @name $httpBackend#whenHEAD
-   * @description
-   * Creates a new backend definition for HEAD requests. For more info see `when()`.
-   *
-   * @param {string|RegExp|function(string)=} url HTTP url or function that receives a url
-   *   and returns true if the url matches the current definition.
-   * @param {(Object|function(Object))=} headers HTTP headers.
-   * @param {(Array)=} keys Array of keys to assign to regex matches in request url described above.
-   * @returns {requestHandler} Returns an object with `respond` method that controls how a matched
-   * request is handled. You can save this object for later use and invoke `respond` again in
-   * order to change how a matched request is handled.
-   */
-
-  /**
-   * @ngdoc method
-   * @name $httpBackend#whenDELETE
-   * @description
-   * Creates a new backend definition for DELETE requests. For more info see `when()`.
-   *
-   * @param {string|RegExp|function(string)=} url HTTP url or function that receives a url
-   *   and returns true if the url matches the current definition.
-   * @param {(Object|function(Object))=} headers HTTP headers.
-   * @param {(Array)=} keys Array of keys to assign to regex matches in request url described above.
-   * @returns {requestHandler} Returns an object with `respond` method that controls how a matched
-   * request is handled. You can save this object for later use and invoke `respond` again in
-   * order to change how a matched request is handled.
-   */
-
-  /**
-   * @ngdoc method
-   * @name $httpBackend#whenPOST
-   * @description
-   * Creates a new backend definition for POST requests. For more info see `when()`.
-   *
-   * @param {string|RegExp|function(string)=} url HTTP url or function that receives a url
-   *   and returns true if the url matches the current definition.
-   * @param {(string|RegExp|function(string))=} data HTTP request body or function that receives
-   *   data string and returns true if the data is as expected.
-   * @param {(Object|function(Object))=} headers HTTP headers.
-   * @param {(Array)=} keys Array of keys to assign to regex matches in request url described above.
-   * @returns {requestHandler} Returns an object with `respond` method that controls how a matched
-   * request is handled. You can save this object for later use and invoke `respond` again in
-   * order to change how a matched request is handled.
-   */
-
-  /**
-   * @ngdoc method
-   * @name $httpBackend#whenPUT
-   * @description
-   * Creates a new backend definition for PUT requests.  For more info see `when()`.
-   *
-   * @param {string|RegExp|function(string)=} url HTTP url or function that receives a url
-   *   and returns true if the url matches the current definition.
-   * @param {(string|RegExp|function(string))=} data HTTP request body or function that receives
-   *   data string and returns true if the data is as expected.
-   * @param {(Object|function(Object))=} headers HTTP headers.
-   * @param {(Array)=} keys Array of keys to assign to regex matches in request url described above.
-   * @returns {requestHandler} Returns an object with `respond` method that controls how a matched
-   * request is handled. You can save this object for later use and invoke `respond` again in
-   * order to change how a matched request is handled.
-   */
-
-  /**
-   * @ngdoc method
-   * @name $httpBackend#whenJSONP
-   * @description
-   * Creates a new backend definition for JSONP requests. For more info see `when()`.
-   *
-   * @param {string|RegExp|function(string)=} url HTTP url or function that receives a url
-   *   and returns true if the url matches the current definition.
-   * @param {(Array)=} keys Array of keys to assign to regex matches in request url described above.
-   * @returns {requestHandler} Returns an object with `respond` method that controls how a matched
-   * request is handled. You can save this object for later use and invoke `respond` again in
-   * order to change how a matched request is handled.
-   */
-  createShortMethods('when');
-
-  /**
-   * @ngdoc method
-   * @name $httpBackend#whenRoute
-   * @description
-   * Creates a new backend definition that compares only with the requested route.
-   *
-   * @param {string} method HTTP method.
-   * @param {string} url HTTP url string that supports colon param matching.
-   * @returns {requestHandler} Returns an object with `respond` method that controls how a matched
-   * request is handled. You can save this object for later use and invoke `respond` again in
-   * order to change how a matched request is handled. See #when for more info.
-   */
-  $httpBackend.whenRoute = function(method, url) {
-    var pathObj = parseRoute(url);
-    return $httpBackend.when(method, pathObj.regexp, undefined, undefined, pathObj.keys);
-  };
-
-  function parseRoute(url) {
-    var ret = {
-      regexp: url
-    },
-    keys = ret.keys = [];
-
-    if (!url || !angular.isString(url)) return ret;
-
-    url = url
-      .replace(/([().])/g, '\\$1')
-      .replace(/(\/)?:(\w+)([?*])?/g, function(_, slash, key, option) {
-        var optional = option === '?' ? option : null;
-        var star = option === '*' ? option : null;
-        keys.push({ name: key, optional: !!optional });
-        slash = slash || '';
-        return ''
-          + (optional ? '' : slash)
-          + '(?:'
-          + (optional ? slash : '')
-          + (star && '(.+?)' || '([^/]+)')
-          + (optional || '')
-          + ')'
-          + (optional || '');
-      })
-      .replace(/([/$*])/g, '\\$1');
-
-    ret.regexp = new RegExp('^' + url, 'i');
-    return ret;
-  }
-
-  /**
-   * @ngdoc method
-   * @name $httpBackend#expect
-   * @description
-   * Creates a new request expectation.
-   *
-   * @param {string} method HTTP method.
-   * @param {string|RegExp|function(string)=} url HTTP url or function that receives a url
-   *   and returns true if the url matches the current definition.
-   * @param {(string|RegExp|function(string)|Object)=} data HTTP request body or function that
-   *  receives data string and returns true if the data is as expected, or Object if request body
-   *  is in JSON format.
-   * @param {(Object|function(Object))=} headers HTTP headers or function that receives http header
-   *   object and returns true if the headers match the current expectation.
-   * @param {(Array)=} keys Array of keys to assign to regex matches in request url described above.
-   * @returns {requestHandler} Returns an object with `respond` method that controls how a matched
-   *  request is handled. You can save this object for later use and invoke `respond` again in
-   *  order to change how a matched request is handled.
-   *
-   *  - respond –
-   *    ```
-   *    { function([status,] data[, headers, statusText])
-   *    | function(function(method, url, data, headers, params)}
-   *    ```
-   *    – The respond method takes a set of static data to be returned or a function that can
-   *    return an array containing response status (number), response data (Array|Object|string),
-   *    response headers (Object), and the text for the status (string). The respond method returns
-   *    the `requestHandler` object for possible overrides.
-   */
-  $httpBackend.expect = function(method, url, data, headers, keys) {
-
-    assertArgDefined(arguments, 1, 'url');
-
-    var expectation = new MockHttpExpectation(method, url, data, headers, keys),
-        chain = {
-          respond: function(status, data, headers, statusText) {
-            expectation.response = createResponse(status, data, headers, statusText);
-            return chain;
-          }
-        };
-
-    expectations.push(expectation);
-    return chain;
-  };
-
-  /**
-   * @ngdoc method
-   * @name $httpBackend#expectGET
-   * @description
-   * Creates a new request expectation for GET requests. For more info see `expect()`.
-   *
-   * @param {string|RegExp|function(string)=} url HTTP url or function that receives a url
-   *   and returns true if the url matches the current definition.
-   * @param {Object=} headers HTTP headers.
-   * @param {(Array)=} keys Array of keys to assign to regex matches in request url described above.
-   * @returns {requestHandler} Returns an object with `respond` method that controls how a matched
-   * request is handled. You can save this object for later use and invoke `respond` again in
-   * order to change how a matched request is handled. See #expect for more info.
-   */
-
-  /**
-   * @ngdoc method
-   * @name $httpBackend#expectHEAD
-   * @description
-   * Creates a new request expectation for HEAD requests. For more info see `expect()`.
-   *
-   * @param {string|RegExp|function(string)=} url HTTP url or function that receives a url
-   *   and returns true if the url matches the current definition.
-   * @param {Object=} headers HTTP headers.
-   * @param {(Array)=} keys Array of keys to assign to regex matches in request url described above.
-   * @returns {requestHandler} Returns an object with `respond` method that controls how a matched
-   *   request is handled. You can save this object for later use and invoke `respond` again in
-   *   order to change how a matched request is handled.
-   */
-
-  /**
-   * @ngdoc method
-   * @name $httpBackend#expectDELETE
-   * @description
-   * Creates a new request expectation for DELETE requests. For more info see `expect()`.
-   *
-   * @param {string|RegExp|function(string)=} url HTTP url or function that receives a url
-   *   and returns true if the url matches the current definition.
-   * @param {Object=} headers HTTP headers.
-   * @param {(Array)=} keys Array of keys to assign to regex matches in request url described above.
-   * @returns {requestHandler} Returns an object with `respond` method that controls how a matched
-   *   request is handled. You can save this object for later use and invoke `respond` again in
-   *   order to change how a matched request is handled.
-   */
-
-  /**
-   * @ngdoc method
-   * @name $httpBackend#expectPOST
-   * @description
-   * Creates a new request expectation for POST requests. For more info see `expect()`.
-   *
-   * @param {string|RegExp|function(string)=} url HTTP url or function that receives a url
-   *   and returns true if the url matches the current definition.
-   * @param {(string|RegExp|function(string)|Object)=} data HTTP request body or function that
-   *  receives data string and returns true if the data is as expected, or Object if request body
-   *  is in JSON format.
-   * @param {Object=} headers HTTP headers.
-   * @param {(Array)=} keys Array of keys to assign to regex matches in request url described above.
-   * @returns {requestHandler} Returns an object with `respond` method that controls how a matched
-   *   request is handled. You can save this object for later use and invoke `respond` again in
-   *   order to change how a matched request is handled.
-   */
-
-  /**
-   * @ngdoc method
-   * @name $httpBackend#expectPUT
-   * @description
-   * Creates a new request expectation for PUT requests. For more info see `expect()`.
-   *
-   * @param {string|RegExp|function(string)=} url HTTP url or function that receives a url
-   *   and returns true if the url matches the current definition.
-   * @param {(string|RegExp|function(string)|Object)=} data HTTP request body or function that
-   *  receives data string and returns true if the data is as expected, or Object if request body
-   *  is in JSON format.
-   * @param {Object=} headers HTTP headers.
-   * @param {(Array)=} keys Array of keys to assign to regex matches in request url described above.
-   * @returns {requestHandler} Returns an object with `respond` method that controls how a matched
-   *   request is handled. You can save this object for later use and invoke `respond` again in
-   *   order to change how a matched request is handled.
-   */
-
-  /**
-   * @ngdoc method
-   * @name $httpBackend#expectPATCH
-   * @description
-   * Creates a new request expectation for PATCH requests. For more info see `expect()`.
-   *
-   * @param {string|RegExp|function(string)=} url HTTP url or function that receives a url
-   *   and returns true if the url matches the current definition.
-   * @param {(string|RegExp|function(string)|Object)=} data HTTP request body or function that
-   *  receives data string and returns true if the data is as expected, or Object if request body
-   *  is in JSON format.
-   * @param {Object=} headers HTTP headers.
-   * @param {(Array)=} keys Array of keys to assign to regex matches in request url described above.
-   * @returns {requestHandler} Returns an object with `respond` method that controls how a matched
-   *   request is handled. You can save this object for later use and invoke `respond` again in
-   *   order to change how a matched request is handled.
-   */
-
-  /**
-   * @ngdoc method
-   * @name $httpBackend#expectJSONP
-   * @description
-   * Creates a new request expectation for JSONP requests. For more info see `expect()`.
-   *
-   * @param {string|RegExp|function(string)=} url HTTP url or function that receives an url
-   *   and returns true if the url matches the current definition.
-   * @param {(Array)=} keys Array of keys to assign to regex matches in request url described above.
-   * @returns {requestHandler} Returns an object with `respond` method that controls how a matched
-   *   request is handled. You can save this object for later use and invoke `respond` again in
-   *   order to change how a matched request is handled.
-   */
-  createShortMethods('expect');
-
-  /**
-   * @ngdoc method
-   * @name $httpBackend#expectRoute
-   * @description
-   * Creates a new request expectation that compares only with the requested route.
-   *
-   * @param {string} method HTTP method.
-   * @param {string} url HTTP url string that supports colon param matching.
-   * @returns {requestHandler} Returns an object with `respond` method that controls how a matched
-   * request is handled. You can save this object for later use and invoke `respond` again in
-   * order to change how a matched request is handled. See #expect for more info.
-   */
-  $httpBackend.expectRoute = function(method, url) {
-    var pathObj = parseRoute(url);
-    return $httpBackend.expect(method, pathObj.regexp, undefined, undefined, pathObj.keys);
-  };
-
-
-  /**
-   * @ngdoc method
-   * @name $httpBackend#flush
-   * @description
-   * Flushes pending requests using the trained responses. Requests are flushed in the order they
-   * were made, but it is also possible to skip one or more requests (for example to have them
-   * flushed later). This is useful for simulating scenarios where responses arrive from the server
-   * in any order.
-   *
-   * If there are no pending requests to flush when the method is called, an exception is thrown (as
-   * this is typically a sign of programming error).
-   *
-   * @param {number=} count - Number of responses to flush. If undefined/null, all pending requests
-   *     (starting after `skip`) will be flushed.
-   * @param {number=} [skip=0] - Number of pending requests to skip. For example, a value of `5`
-   *     would skip the first 5 pending requests and start flushing from the 6th onwards.
-   */
-  $httpBackend.flush = function(count, skip, digest) {
-    if (digest !== false) $rootScope.$digest();
-
-    skip = skip || 0;
-    if (skip >= responses.length) throw new Error('No pending request to flush !');
-
-    if (angular.isDefined(count) && count !== null) {
-      while (count--) {
-        var part = responses.splice(skip, 1);
-        if (!part.length) throw new Error('No more pending request to flush !');
-        part[0]();
-      }
-    } else {
-      while (responses.length > skip) {
-        responses.splice(skip, 1)[0]();
-      }
-    }
-    $httpBackend.verifyNoOutstandingExpectation(digest);
-  };
-
-
-  /**
-   * @ngdoc method
-   * @name $httpBackend#verifyNoOutstandingExpectation
-   * @description
-   * Verifies that all of the requests defined via the `expect` api were made. If any of the
-   * requests were not made, verifyNoOutstandingExpectation throws an exception.
-   *
-   * Typically, you would call this method following each test case that asserts requests using an
-   * "afterEach" clause.
-   *
-   * ```js
-   *   afterEach($httpBackend.verifyNoOutstandingExpectation);
-   * ```
-   */
-  $httpBackend.verifyNoOutstandingExpectation = function(digest) {
-    if (digest !== false) $rootScope.$digest();
-    if (expectations.length) {
-      throw new Error('Unsatisfied requests: ' + expectations.join(', '));
-    }
-  };
-
-
-  /**
-   * @ngdoc method
-   * @name $httpBackend#verifyNoOutstandingRequest
-   * @description
-   * Verifies that there are no outstanding requests that need to be flushed.
-   *
-   * Typically, you would call this method following each test case that asserts requests using an
-   * "afterEach" clause.
-   *
-   * ```js
-   *   afterEach($httpBackend.verifyNoOutstandingRequest);
-   * ```
-   */
-  $httpBackend.verifyNoOutstandingRequest = function(digest) {
-    if (digest !== false) $rootScope.$digest();
-    if (responses.length) {
-      throw new Error('Unflushed requests: ' + responses.length);
-    }
-  };
-
-
-  /**
-   * @ngdoc method
-   * @name $httpBackend#resetExpectations
-   * @description
-   * Resets all request expectations, but preserves all backend definitions. Typically, you would
-   * call resetExpectations during a multiple-phase test when you want to reuse the same instance of
-   * $httpBackend mock.
-   */
-  $httpBackend.resetExpectations = function() {
-    expectations.length = 0;
-    responses.length = 0;
-  };
-
-  $httpBackend.$$originalHttpBackend = originalHttpBackend;
-
-  return $httpBackend;
-
-
-  function createShortMethods(prefix) {
-    angular.forEach(['GET', 'DELETE', 'JSONP', 'HEAD'], function(method) {
-     $httpBackend[prefix + method] = function(url, headers, keys) {
-        assertArgDefined(arguments, 0, 'url');
-
-        // Change url to `null` if `undefined` to stop it throwing an exception further down
-        if (angular.isUndefined(url)) url = null;
-
-       return $httpBackend[prefix](method, url, undefined, headers, keys);
-     };
-    });
-
-    angular.forEach(['PUT', 'POST', 'PATCH'], function(method) {
-      $httpBackend[prefix + method] = function(url, data, headers, keys) {
-        assertArgDefined(arguments, 0, 'url');
-
-        // Change url to `null` if `undefined` to stop it throwing an exception further down
-        if (angular.isUndefined(url)) url = null;
-
-        return $httpBackend[prefix](method, url, data, headers, keys);
-      };
-    });
-  }
-}
-
-function assertArgDefined(args, index, name) {
-  if (args.length > index && angular.isUndefined(args[index])) {
-    throw new Error('Undefined argument `' + name + '`; the argument is provided but not defined');
-  }
-}
-
-
-function MockHttpExpectation(method, url, data, headers, keys) {
-
-  function getUrlParams(u) {
-    var params = u.slice(u.indexOf('?') + 1).split('&');
-    return params.sort();
-  }
-
-  function compareUrl(u) {
-    return (url.slice(0, url.indexOf('?')) === u.slice(0, u.indexOf('?')) &&
-      getUrlParams(url).join() === getUrlParams(u).join());
-  }
-
-  this.data = data;
-  this.headers = headers;
-
-  this.match = function(m, u, d, h) {
-    if (method !== m) return false;
-    if (!this.matchUrl(u)) return false;
-    if (angular.isDefined(d) && !this.matchData(d)) return false;
-    if (angular.isDefined(h) && !this.matchHeaders(h)) return false;
-    return true;
-  };
-
-  this.matchUrl = function(u) {
-    if (!url) return true;
-    if (angular.isFunction(url.test)) return url.test(u);
-    if (angular.isFunction(url)) return url(u);
-    return (url === u || compareUrl(u));
-  };
-
-  this.matchHeaders = function(h) {
-    if (angular.isUndefined(headers)) return true;
-    if (angular.isFunction(headers)) return headers(h);
-    return angular.equals(headers, h);
-  };
-
-  this.matchData = function(d) {
-    if (angular.isUndefined(data)) return true;
-    if (data && angular.isFunction(data.test)) return data.test(d);
-    if (data && angular.isFunction(data)) return data(d);
-    if (data && !angular.isString(data)) {
-      return angular.equals(angular.fromJson(angular.toJson(data)), angular.fromJson(d));
-    }
-    // eslint-disable-next-line eqeqeq
-    return data == d;
-  };
-
-  this.toString = function() {
-    return method + ' ' + url;
-  };
-
-  this.params = function(u) {
-    return angular.extend(parseQuery(), pathParams());
-
-    function pathParams() {
-      var keyObj = {};
-      if (!url || !angular.isFunction(url.test) || !keys || keys.length === 0) return keyObj;
-
-      var m = url.exec(u);
-      if (!m) return keyObj;
-      for (var i = 1, len = m.length; i < len; ++i) {
-        var key = keys[i - 1];
-        var val = m[i];
-        if (key && val) {
-          keyObj[key.name || key] = val;
-        }
-      }
-
-      return keyObj;
-    }
-
-    function parseQuery() {
-      var obj = {}, key_value, key,
-          queryStr = u.indexOf('?') > -1
-          ? u.substring(u.indexOf('?') + 1)
-          : '';
-
-      angular.forEach(queryStr.split('&'), function(keyValue) {
-        if (keyValue) {
-          key_value = keyValue.replace(/\+/g,'%20').split('=');
-          key = tryDecodeURIComponent(key_value[0]);
-          if (angular.isDefined(key)) {
-            var val = angular.isDefined(key_value[1]) ? tryDecodeURIComponent(key_value[1]) : true;
-            if (!hasOwnProperty.call(obj, key)) {
-              obj[key] = val;
-            } else if (angular.isArray(obj[key])) {
-              obj[key].push(val);
-            } else {
-              obj[key] = [obj[key],val];
-            }
-          }
-        }
-      });
-      return obj;
-    }
-    function tryDecodeURIComponent(value) {
-      try {
-        return decodeURIComponent(value);
-      } catch (e) {
-        // Ignore any invalid uri component
-      }
-    }
-  };
-}
-
-function createMockXhr() {
-  return new MockXhr();
-}
-
-function MockXhr() {
-
-  // hack for testing $http, $httpBackend
-  MockXhr.$$lastInstance = this;
-
-  this.open = function(method, url, async) {
-    this.$$method = method;
-    this.$$url = url;
-    this.$$async = async;
-    this.$$reqHeaders = {};
-    this.$$respHeaders = {};
-  };
-
-  this.send = function(data) {
-    this.$$data = data;
-  };
-
-  this.setRequestHeader = function(key, value) {
-    this.$$reqHeaders[key] = value;
-  };
-
-  this.getResponseHeader = function(name) {
-    // the lookup must be case insensitive,
-    // that's why we try two quick lookups first and full scan last
-    var header = this.$$respHeaders[name];
-    if (header) return header;
-
-    name = angular.lowercase(name);
-    header = this.$$respHeaders[name];
-    if (header) return header;
-
-    header = undefined;
-    angular.forEach(this.$$respHeaders, function(headerVal, headerName) {
-      if (!header && angular.lowercase(headerName) === name) header = headerVal;
-    });
-    return header;
-  };
-
-  this.getAllResponseHeaders = function() {
-    var lines = [];
-
-    angular.forEach(this.$$respHeaders, function(value, key) {
-      lines.push(key + ': ' + value);
-    });
-    return lines.join('\n');
-  };
-
-  this.abort = angular.noop;
-
-  // This section simulates the events on a real XHR object (and the upload object)
-  // When we are testing $httpBackend (inside the angular project) we make partial use of this
-  // but store the events directly ourselves on `$$events`, instead of going through the `addEventListener`
-  this.$$events = {};
-  this.addEventListener = function(name, listener) {
-    if (angular.isUndefined(this.$$events[name])) this.$$events[name] = [];
-    this.$$events[name].push(listener);
-  };
-
-  this.upload = {
-    $$events: {},
-    addEventListener: this.addEventListener
-  };
-}
-
-
-/**
- * @ngdoc service
- * @name $timeout
- * @description
- *
- * This service is just a simple decorator for {@link ng.$timeout $timeout} service
- * that adds a "flush" and "verifyNoPendingTasks" methods.
- */
-
-angular.mock.$TimeoutDecorator = ['$delegate', '$browser', function($delegate, $browser) {
-
-  /**
-   * @ngdoc method
-   * @name $timeout#flush
-   * @description
-   *
-   * Flushes the queue of pending tasks.
-   *
-   * @param {number=} delay maximum timeout amount to flush up until
-   */
-  $delegate.flush = function(delay) {
-    $browser.defer.flush(delay);
-  };
-
-  /**
-   * @ngdoc method
-   * @name $timeout#verifyNoPendingTasks
-   * @description
-   *
-   * Verifies that there are no pending tasks that need to be flushed.
-   */
-  $delegate.verifyNoPendingTasks = function() {
-    if ($browser.deferredFns.length) {
-      throw new Error('Deferred tasks to flush (' + $browser.deferredFns.length + '): ' +
-          formatPendingTasksAsString($browser.deferredFns));
-    }
-  };
-
-  function formatPendingTasksAsString(tasks) {
-    var result = [];
-    angular.forEach(tasks, function(task) {
-      result.push('{id: ' + task.id + ', time: ' + task.time + '}');
-    });
-
-    return result.join(', ');
-  }
-
-  return $delegate;
-}];
-
-angular.mock.$RAFDecorator = ['$delegate', function($delegate) {
-  var rafFn = function(fn) {
-    var index = rafFn.queue.length;
-    rafFn.queue.push(fn);
-    return function() {
-      rafFn.queue.splice(index, 1);
-    };
-  };
-
-  rafFn.queue = [];
-  rafFn.supported = $delegate.supported;
-
-  rafFn.flush = function() {
-    if (rafFn.queue.length === 0) {
-      throw new Error('No rAF callbacks present');
-    }
-
-    var length = rafFn.queue.length;
-    for (var i = 0; i < length; i++) {
-      rafFn.queue[i]();
-    }
-
-    rafFn.queue = rafFn.queue.slice(i);
-  };
-
-  return rafFn;
-}];
-
-/**
- *
- */
-var originalRootElement;
-angular.mock.$RootElementProvider = function() {
-  this.$get = ['$injector', function($injector) {
-    originalRootElement = angular.element('<div ng-app></div>').data('$injector', $injector);
-    return originalRootElement;
-  }];
-};
-
-/**
- * @ngdoc service
- * @name $controller
- * @description
- * A decorator for {@link ng.$controller} with additional `bindings` parameter, useful when testing
- * controllers of directives that use {@link $compile#-bindtocontroller- `bindToController`}.
- *
- * Depending on the value of
- * {@link ng.$compileProvider#preAssignBindingsEnabled `preAssignBindingsEnabled()`}, the properties
- * will be bound before or after invoking the constructor.
- *
- *
- * ## Example
- *
- * ```js
- *
- * // Directive definition ...
- *
- * myMod.directive('myDirective', {
- *   controller: 'MyDirectiveController',
- *   bindToController: {
- *     name: '@'
- *   }
- * });
- *
- *
- * // Controller definition ...
- *
- * myMod.controller('MyDirectiveController', ['$log', function($log) {
- *   this.log = function() {
- *     $log.info(this.name);
- *   };
- * }]);
- *
- *
- * // In a test ...
- *
- * describe('myDirectiveController', function() {
- *   describe('log()', function() {
- *     it('should write the bound name to the log', inject(function($controller, $log) {
- *       var ctrl = $controller('MyDirectiveController', { /* no locals &#42;/ }, { name: 'Clark Kent' });
- *       ctrl.log();
- *
- *       expect(ctrl.name).toEqual('Clark Kent');
- *       expect($log.info.logs).toEqual(['Clark Kent']);
- *     }));
- *   });
- * });
- *
- * ```
- *
- * @param {Function|string} constructor If called with a function then it's considered to be the
- *    controller constructor function. Otherwise it's considered to be a string which is used
- *    to retrieve the controller constructor using the following steps:
- *
- *    * check if a controller with given name is registered via `$controllerProvider`
- *    * check if evaluating the string on the current scope returns a constructor
- *    * if $controllerProvider#allowGlobals, check `window[constructor]` on the global
- *      `window` object (deprecated, not recommended)
- *
- *    The string can use the `controller as property` syntax, where the controller instance is published
- *    as the specified property on the `scope`; the `scope` must be injected into `locals` param for this
- *    to work correctly.
- *
- * @param {Object} locals Injection locals for Controller.
- * @param {Object=} bindings Properties to add to the controller instance. This is used to simulate
- *                           the `bindToController` feature and simplify certain kinds of tests.
- * @return {Object} Instance of given controller.
- */
-function createControllerDecorator(compileProvider) {
-  angular.mock.$ControllerDecorator = ['$delegate', function($delegate) {
-    return function(expression, locals, later, ident) {
-      if (later && typeof later === 'object') {
-        var preAssignBindingsEnabled = compileProvider.preAssignBindingsEnabled();
-
-        var instantiate = $delegate(expression, locals, true, ident);
-        if (preAssignBindingsEnabled) {
-          angular.extend(instantiate.instance, later);
-        }
-
-        var instance = instantiate();
-        if (!preAssignBindingsEnabled || instance !== instantiate.instance) {
-          angular.extend(instance, later);
-        }
-
-        return instance;
-      }
-      return $delegate(expression, locals, later, ident);
-    };
-  }];
-
-  return angular.mock.$ControllerDecorator;
-}
-
-/**
- * @ngdoc service
- * @name $componentController
- * @description
- * A service that can be used to create instances of component controllers. Useful for unit-testing.
- *
- * Be aware that the controller will be instantiated and attached to the scope as specified in
- * the component definition object. If you do not provide a `$scope` object in the `locals` param
- * then the helper will create a new isolated scope as a child of `$rootScope`.
- *
- * If you are using `$element` or `$attrs` in the controller, make sure to provide them as `locals`.
- * The `$element` must be a jqLite-wrapped DOM element, and `$attrs` should be an object that
- * has all properties / functions that you are using in the controller. If this is getting too complex,
- * you should compile the component instead and access the component's controller via the
- * {@link angular.element#methods `controller`} function.
- *
- * See also the section on {@link guide/component#unit-testing-component-controllers unit-testing component controllers}
- * in the guide.
- *
- * @param {string} componentName the name of the component whose controller we want to instantiate
- * @param {Object} locals Injection locals for Controller.
- * @param {Object=} bindings Properties to add to the controller before invoking the constructor. This is used
- *                           to simulate the `bindToController` feature and simplify certain kinds of tests.
- * @param {string=} ident Override the property name to use when attaching the controller to the scope.
- * @return {Object} Instance of requested controller.
- */
-angular.mock.$ComponentControllerProvider = ['$compileProvider',
-    function ComponentControllerProvider($compileProvider) {
-  this.$get = ['$controller','$injector', '$rootScope', function($controller, $injector, $rootScope) {
-    return function $componentController(componentName, locals, bindings, ident) {
-      // get all directives associated to the component name
-      var directives = $injector.get(componentName + 'Directive');
-      // look for those directives that are components
-      var candidateDirectives = directives.filter(function(directiveInfo) {
-        // components have controller, controllerAs and restrict:'E'
-        return directiveInfo.controller && directiveInfo.controllerAs && directiveInfo.restrict === 'E';
-      });
-      // check if valid directives found
-      if (candidateDirectives.length === 0) {
-        throw new Error('No component found');
-      }
-      if (candidateDirectives.length > 1) {
-        throw new Error('Too many components found');
-      }
-      // get the info of the component
-      var directiveInfo = candidateDirectives[0];
-      // create a scope if needed
-      locals = locals || {};
-      locals.$scope = locals.$scope || $rootScope.$new(true);
-      return $controller(directiveInfo.controller, locals, bindings, ident || directiveInfo.controllerAs);
-    };
-  }];
-}];
-
-
-/**
- * @ngdoc module
- * @name ngMock
- * @packageName angular-mocks
- * @description
- *
- * # ngMock
- *
- * The `ngMock` module provides support to inject and mock Angular services into unit tests.
- * In addition, ngMock also extends various core ng services such that they can be
- * inspected and controlled in a synchronous manner within test code.
- *
- *
- * <div doc-module-components="ngMock"></div>
- *
- * @installation
- *
- *  First, download the file:
- *  * [Google CDN](https://developers.google.com/speed/libraries/devguide#angularjs) e.g.
- *    `"//ajax.googleapis.com/ajax/libs/angularjs/X.Y.Z/angular-mocks.js"`
- *  * [NPM](https://www.npmjs.com/) e.g. `npm install angular-mocks@X.Y.Z`
- *  * [Yarn](https://yarnpkg.com) e.g. `yarn add angular-mocks@X.Y.Z`
- *  * [Bower](http://bower.io) e.g. `bower install angular-mocks#X.Y.Z`
- *  * [code.angularjs.org](https://code.angularjs.org/) (discouraged for production use)  e.g.
- *    `"//code.angularjs.org/X.Y.Z/angular-mocks.js"`
- *
- * where X.Y.Z is the AngularJS version you are running.
- *
- * Then, configure your test runner to load `angular-mocks.js` after `angular.js`.
- * This example uses <a href="http://karma-runner.github.io/">Karma</a>:
- *
- * ```
- * config.set({
- *   files: [
- *     'build/angular.js', // and other module files you need
- *     'build/angular-mocks.js',
- *     '<path/to/application/files>',
- *     '<path/to/spec/files>'
- *   ]
- * });
- * ```
- *
- * Including the `angular-mocks.js` file automatically adds the `ngMock` module, so your tests
- *  are ready to go!
- */
-angular.module('ngMock', ['ng']).provider({
-  $browser: angular.mock.$BrowserProvider,
-  $exceptionHandler: angular.mock.$ExceptionHandlerProvider,
-  $log: angular.mock.$LogProvider,
-  $interval: angular.mock.$IntervalProvider,
-  $rootElement: angular.mock.$RootElementProvider,
-  $componentController: angular.mock.$ComponentControllerProvider
-}).config(['$provide', '$compileProvider', function($provide, $compileProvider) {
-  $provide.decorator('$timeout', angular.mock.$TimeoutDecorator);
-  $provide.decorator('$$rAF', angular.mock.$RAFDecorator);
-  $provide.decorator('$rootScope', angular.mock.$RootScopeDecorator);
-  $provide.decorator('$controller', createControllerDecorator($compileProvider));
-  $provide.decorator('$httpBackend', angular.mock.$httpBackendDecorator);
-}]);
-
-/**
- * @ngdoc module
- * @name ngMockE2E
- * @module ngMockE2E
- * @packageName angular-mocks
- * @description
- *
- * The `ngMockE2E` is an angular module which contains mocks suitable for end-to-end testing.
- * Currently there is only one mock present in this module -
- * the {@link ngMockE2E.$httpBackend e2e $httpBackend} mock.
- */
-angular.module('ngMockE2E', ['ng']).config(['$provide', function($provide) {
-  $provide.decorator('$httpBackend', angular.mock.e2e.$httpBackendDecorator);
-}]);
-
-/**
- * @ngdoc service
- * @name $httpBackend
- * @module ngMockE2E
- * @description
- * Fake HTTP backend implementation suitable for end-to-end testing or backend-less development of
- * applications that use the {@link ng.$http $http service}.
- *
- * <div class="alert alert-info">
- * **Note**: For fake http backend implementation suitable for unit testing please see
- * {@link ngMock.$httpBackend unit-testing $httpBackend mock}.
- * </div>
- *
- * This implementation can be used to respond with static or dynamic responses via the `when` api
- * and its shortcuts (`whenGET`, `whenPOST`, etc) and optionally pass through requests to the
- * real $httpBackend for specific requests (e.g. to interact with certain remote apis or to fetch
- * templates from a webserver).
- *
- * As opposed to unit-testing, in an end-to-end testing scenario or in scenario when an application
- * is being developed with the real backend api replaced with a mock, it is often desirable for
- * certain category of requests to bypass the mock and issue a real http request (e.g. to fetch
- * templates or static files from the webserver). To configure the backend with this behavior
- * use the `passThrough` request handler of `when` instead of `respond`.
- *
- * Additionally, we don't want to manually have to flush mocked out requests like we do during unit
- * testing. For this reason the e2e $httpBackend flushes mocked out requests
- * automatically, closely simulating the behavior of the XMLHttpRequest object.
- *
- * To setup the application to run with this http backend, you have to create a module that depends
- * on the `ngMockE2E` and your application modules and defines the fake backend:
- *
- * ```js
- *   var myAppDev = angular.module('myAppDev', ['myApp', 'ngMockE2E']);
- *   myAppDev.run(function($httpBackend) {
- *     var phones = [{name: 'phone1'}, {name: 'phone2'}];
- *
- *     // returns the current list of phones
- *     $httpBackend.whenGET('/phones').respond(phones);
- *
- *     // adds a new phone to the phones array
- *     $httpBackend.whenPOST('/phones').respond(function(method, url, data) {
- *       var phone = angular.fromJson(data);
- *       phones.push(phone);
- *       return [200, phone, {}];
- *     });
- *     $httpBackend.whenGET(/^\/templates\//).passThrough(); // Requests for templates are handled by the real server
- *     //...
- *   });
- * ```
- *
- * Afterwards, bootstrap your app with this new module.
- *
- * ## Example
- * <example name="httpbackend-e2e-testing" module="myAppE2E" deps="angular-mocks.js">
- * <file name="app.js">
- *   var myApp = angular.module('myApp', []);
- *
- *   myApp.controller('MainCtrl', function MainCtrl($http) {
- *     var ctrl = this;
- *
- *     ctrl.phones = [];
- *     ctrl.newPhone = {
- *       name: ''
- *     };
- *
- *     ctrl.getPhones = function() {
- *       $http.get('/phones').then(function(response) {
- *         ctrl.phones = response.data;
- *       });
- *     };
- *
- *     ctrl.addPhone = function(phone) {
- *       $http.post('/phones', phone).then(function() {
- *         ctrl.newPhone = {name: ''};
- *         return ctrl.getPhones();
- *       });
- *     };
- *
- *     ctrl.getPhones();
- *   });
- * </file>
- * <file name="e2e.js">
- *   var myAppDev = angular.module('myAppE2E', ['myApp', 'ngMockE2E']);
- *
- *   myAppDev.run(function($httpBackend) {
- *     var phones = [{name: 'phone1'}, {name: 'phone2'}];
- *
- *     // returns the current list of phones
- *     $httpBackend.whenGET('/phones').respond(phones);
- *
- *     // adds a new phone to the phones array
- *     $httpBackend.whenPOST('/phones').respond(function(method, url, data) {
- *       var phone = angular.fromJson(data);
- *       phones.push(phone);
- *       return [200, phone, {}];
- *     });
- *   });
- * </file>
- * <file name="index.html">
- *   <div ng-controller="MainCtrl as $ctrl">
- *   <form name="newPhoneForm" ng-submit="$ctrl.addPhone($ctrl.newPhone)">
- *     <input type="text" ng-model="$ctrl.newPhone.name">
- *     <input type="submit" value="Add Phone">
- *   </form>
- *   <h1>Phones</h1>
- *   <ul>
- *     <li ng-repeat="phone in $ctrl.phones">{{phone.name}}</li>
- *   </ul>
- *   </div>
- * </file>
- * </example>
- *
- *
- */
-
-/**
- * @ngdoc method
- * @name $httpBackend#when
- * @module ngMockE2E
- * @description
- * Creates a new backend definition.
- *
- * @param {string} method HTTP method.
- * @param {string|RegExp|function(string)=} url HTTP url or function that receives a url
- *   and returns true if the url matches the current definition.
- * @param {(string|RegExp|function(string))=} data HTTP request body or function that receives
- *   data string and returns true if the data is as expected.
- * @param {(Object|function(Object))=} headers HTTP headers or function that receives http header
- *   object and returns true if the headers match the current definition.
- * @param {(Array)=} keys Array of keys to assign to regex matches in request url described on
- *   {@link ngMock.$httpBackend $httpBackend mock}.
- * @returns {requestHandler} Returns an object with `respond` and `passThrough` methods that
- *   control how a matched request is handled. You can save this object for later use and invoke
- *   `respond` or `passThrough` again in order to change how a matched request is handled.
- *
- *  - respond –
- *    ```
- *    { function([status,] data[, headers, statusText])
- *    | function(function(method, url, data, headers, params)}
- *    ```
- *    – The respond method takes a set of static data to be returned or a function that can return
- *    an array containing response status (number), response data (Array|Object|string), response
- *    headers (Object), and the text for the status (string).
- *  - passThrough – `{function()}` – Any request matching a backend definition with
- *    `passThrough` handler will be passed through to the real backend (an XHR request will be made
- *    to the server.)
- *  - Both methods return the `requestHandler` object for possible overrides.
- */
-
-/**
- * @ngdoc method
- * @name $httpBackend#whenGET
- * @module ngMockE2E
- * @description
- * Creates a new backend definition for GET requests. For more info see `when()`.
- *
- * @param {string|RegExp|function(string)=} url HTTP url or function that receives a url
- *   and returns true if the url matches the current definition.
- * @param {(Object|function(Object))=} headers HTTP headers.
- * @param {(Array)=} keys Array of keys to assign to regex matches in request url described on
- *   {@link ngMock.$httpBackend $httpBackend mock}.
- * @returns {requestHandler} Returns an object with `respond` and `passThrough` methods that
- *   control how a matched request is handled. You can save this object for later use and invoke
- *   `respond` or `passThrough` again in order to change how a matched request is handled.
- */
-
-/**
- * @ngdoc method
- * @name $httpBackend#whenHEAD
- * @module ngMockE2E
- * @description
- * Creates a new backend definition for HEAD requests. For more info see `when()`.
- *
- * @param {string|RegExp|function(string)=} url HTTP url or function that receives a url
- *   and returns true if the url matches the current definition.
- * @param {(Object|function(Object))=} headers HTTP headers.
- * @param {(Array)=} keys Array of keys to assign to regex matches in request url described on
- *   {@link ngMock.$httpBackend $httpBackend mock}.
- * @returns {requestHandler} Returns an object with `respond` and `passThrough` methods that
- *   control how a matched request is handled. You can save this object for later use and invoke
- *   `respond` or `passThrough` again in order to change how a matched request is handled.
- */
-
-/**
- * @ngdoc method
- * @name $httpBackend#whenDELETE
- * @module ngMockE2E
- * @description
- * Creates a new backend definition for DELETE requests. For more info see `when()`.
- *
- * @param {string|RegExp|function(string)=} url HTTP url or function that receives a url
- *   and returns true if the url matches the current definition.
- * @param {(Object|function(Object))=} headers HTTP headers.
- * @param {(Array)=} keys Array of keys to assign to regex matches in request url described on
- *   {@link ngMock.$httpBackend $httpBackend mock}.
- * @returns {requestHandler} Returns an object with `respond` and `passThrough` methods that
- *   control how a matched request is handled. You can save this object for later use and invoke
- *   `respond` or `passThrough` again in order to change how a matched request is handled.
- */
-
-/**
- * @ngdoc method
- * @name $httpBackend#whenPOST
- * @module ngMockE2E
- * @description
- * Creates a new backend definition for POST requests. For more info see `when()`.
- *
- * @param {string|RegExp|function(string)=} url HTTP url or function that receives a url
- *   and returns true if the url matches the current definition.
- * @param {(string|RegExp|function(string))=} data HTTP request body or function that receives
- *   data string and returns true if the data is as expected.
- * @param {(Object|function(Object))=} headers HTTP headers.
- * @param {(Array)=} keys Array of keys to assign to regex matches in request url described on
- *   {@link ngMock.$httpBackend $httpBackend mock}.
- * @returns {requestHandler} Returns an object with `respond` and `passThrough` methods that
- *   control how a matched request is handled. You can save this object for later use and invoke
- *   `respond` or `passThrough` again in order to change how a matched request is handled.
- */
-
-/**
- * @ngdoc method
- * @name $httpBackend#whenPUT
- * @module ngMockE2E
- * @description
- * Creates a new backend definition for PUT requests.  For more info see `when()`.
- *
- * @param {string|RegExp|function(string)=} url HTTP url or function that receives a url
- *   and returns true if the url matches the current definition.
- * @param {(string|RegExp|function(string))=} data HTTP request body or function that receives
- *   data string and returns true if the data is as expected.
- * @param {(Object|function(Object))=} headers HTTP headers.
- * @param {(Array)=} keys Array of keys to assign to regex matches in request url described on
- *   {@link ngMock.$httpBackend $httpBackend mock}.
- * @returns {requestHandler} Returns an object with `respond` and `passThrough` methods that
- *   control how a matched request is handled. You can save this object for later use and invoke
- *   `respond` or `passThrough` again in order to change how a matched request is handled.
- */
-
-/**
- * @ngdoc method
- * @name $httpBackend#whenPATCH
- * @module ngMockE2E
- * @description
- * Creates a new backend definition for PATCH requests.  For more info see `when()`.
- *
- * @param {string|RegExp|function(string)=} url HTTP url or function that receives a url
- *   and returns true if the url matches the current definition.
- * @param {(string|RegExp|function(string))=} data HTTP request body or function that receives
- *   data string and returns true if the data is as expected.
- * @param {(Object|function(Object))=} headers HTTP headers.
- * @param {(Array)=} keys Array of keys to assign to regex matches in request url described on
- *   {@link ngMock.$httpBackend $httpBackend mock}.
- * @returns {requestHandler} Returns an object with `respond` and `passThrough` methods that
- *   control how a matched request is handled. You can save this object for later use and invoke
- *   `respond` or `passThrough` again in order to change how a matched request is handled.
- */
-
-/**
- * @ngdoc method
- * @name $httpBackend#whenJSONP
- * @module ngMockE2E
- * @description
- * Creates a new backend definition for JSONP requests. For more info see `when()`.
- *
- * @param {string|RegExp|function(string)=} url HTTP url or function that receives a url
- *   and returns true if the url matches the current definition.
- * @param {(Array)=} keys Array of keys to assign to regex matches in request url described on
- *   {@link ngMock.$httpBackend $httpBackend mock}.
- * @returns {requestHandler} Returns an object with `respond` and `passThrough` methods that
- *   control how a matched request is handled. You can save this object for later use and invoke
- *   `respond` or `passThrough` again in order to change how a matched request is handled.
- */
-/**
- * @ngdoc method
- * @name $httpBackend#whenRoute
- * @module ngMockE2E
- * @description
- * Creates a new backend definition that compares only with the requested route.
- *
- * @param {string} method HTTP method.
- * @param {string} url HTTP url string that supports colon param matching.
- * @returns {requestHandler} Returns an object with `respond` and `passThrough` methods that
- *   control how a matched request is handled. You can save this object for later use and invoke
- *   `respond` or `passThrough` again in order to change how a matched request is handled.
- */
-angular.mock.e2e = {};
-angular.mock.e2e.$httpBackendDecorator =
-  ['$rootScope', '$timeout', '$delegate', '$browser', createHttpBackendMock];
-
-
-/**
- * @ngdoc type
- * @name $rootScope.Scope
- * @module ngMock
- * @description
- * {@link ng.$rootScope.Scope Scope} type decorated with helper methods useful for testing. These
- * methods are automatically available on any {@link ng.$rootScope.Scope Scope} instance when
- * `ngMock` module is loaded.
- *
- * In addition to all the regular `Scope` methods, the following helper methods are available:
- */
-angular.mock.$RootScopeDecorator = ['$delegate', function($delegate) {
-
-  var $rootScopePrototype = Object.getPrototypeOf($delegate);
-
-  $rootScopePrototype.$countChildScopes = countChildScopes;
-  $rootScopePrototype.$countWatchers = countWatchers;
-
-  return $delegate;
-
-  // ------------------------------------------------------------------------------------------ //
-
-  /**
-   * @ngdoc method
-   * @name $rootScope.Scope#$countChildScopes
-   * @module ngMock
-   * @this $rootScope.Scope
-   * @description
-   * Counts all the direct and indirect child scopes of the current scope.
-   *
-   * The current scope is excluded from the count. The count includes all isolate child scopes.
-   *
-   * @returns {number} Total number of child scopes.
-   */
-  function countChildScopes() {
-    var count = 0; // exclude the current scope
-    var pendingChildHeads = [this.$$childHead];
-    var currentScope;
-
-    while (pendingChildHeads.length) {
-      currentScope = pendingChildHeads.shift();
-
-      while (currentScope) {
-        count += 1;
-        pendingChildHeads.push(currentScope.$$childHead);
-        currentScope = currentScope.$$nextSibling;
-      }
-    }
-
-    return count;
-  }
-
-
-  /**
-   * @ngdoc method
-   * @name $rootScope.Scope#$countWatchers
-   * @this $rootScope.Scope
-   * @module ngMock
-   * @description
-   * Counts all the watchers of direct and indirect child scopes of the current scope.
-   *
-   * The watchers of the current scope are included in the count and so are all the watchers of
-   * isolate child scopes.
-   *
-   * @returns {number} Total number of watchers.
-   */
-  function countWatchers() {
-    var count = this.$$watchers ? this.$$watchers.length : 0; // include the current scope
-    var pendingChildHeads = [this.$$childHead];
-    var currentScope;
-
-    while (pendingChildHeads.length) {
-      currentScope = pendingChildHeads.shift();
-
-      while (currentScope) {
-        count += currentScope.$$watchers ? currentScope.$$watchers.length : 0;
-        pendingChildHeads.push(currentScope.$$childHead);
-        currentScope = currentScope.$$nextSibling;
-      }
-    }
-
-    return count;
-  }
-}];
-
-
-(function(jasmineOrMocha) {
-
-  if (!jasmineOrMocha) {
-    return;
-  }
-
-  var currentSpec = null,
-      injectorState = new InjectorState(),
-      annotatedFunctions = [],
-      wasInjectorCreated = function() {
-        return !!currentSpec;
-      };
-
-  angular.mock.$$annotate = angular.injector.$$annotate;
-  angular.injector.$$annotate = function(fn) {
-    if (typeof fn === 'function' && !fn.$inject) {
-      annotatedFunctions.push(fn);
-    }
-    return angular.mock.$$annotate.apply(this, arguments);
-  };
-
-  /**
-   * @ngdoc function
-   * @name angular.mock.module
-   * @description
-   *
-   * *NOTE*: This function is also published on window for easy access.<br>
-   * *NOTE*: This function is declared ONLY WHEN running tests with jasmine or mocha
-   *
-   * This function registers a module configuration code. It collects the configuration information
-   * which will be used when the injector is created by {@link angular.mock.inject inject}.
-   *
-   * See {@link angular.mock.inject inject} for usage example
-   *
-   * @param {...(string|Function|Object)} fns any number of modules which are represented as string
-   *        aliases or as anonymous module initialization functions. The modules are used to
-   *        configure the injector. The 'ng' and 'ngMock' modules are automatically loaded. If an
-   *        object literal is passed each key-value pair will be registered on the module via
-   *        {@link auto.$provide $provide}.value, the key being the string name (or token) to associate
-   *        with the value on the injector.
-   */
-  var module = window.module = angular.mock.module = function() {
-    var moduleFns = Array.prototype.slice.call(arguments, 0);
-    return wasInjectorCreated() ? workFn() : workFn;
-    /////////////////////
-    function workFn() {
-      if (currentSpec.$injector) {
-        throw new Error('Injector already created, can not register a module!');
-      } else {
-        var fn, modules = currentSpec.$modules || (currentSpec.$modules = []);
-        angular.forEach(moduleFns, function(module) {
-          if (angular.isObject(module) && !angular.isArray(module)) {
-            fn = ['$provide', function($provide) {
-              angular.forEach(module, function(value, key) {
-                $provide.value(key, value);
-              });
-            }];
-          } else {
-            fn = module;
-          }
-          if (currentSpec.$providerInjector) {
-            currentSpec.$providerInjector.invoke(fn);
-          } else {
-            modules.push(fn);
-          }
-        });
-      }
-    }
-  };
-
-  module.$$beforeAllHook = (window.before || window.beforeAll);
-  module.$$afterAllHook = (window.after || window.afterAll);
-
-  // purely for testing ngMock itself
-  module.$$currentSpec = function(to) {
-    if (arguments.length === 0) return to;
-    currentSpec = to;
-  };
-
-  /**
-   * @ngdoc function
-   * @name angular.mock.module.sharedInjector
-   * @description
-   *
-   * *NOTE*: This function is declared ONLY WHEN running tests with jasmine or mocha
-   *
-   * This function ensures a single injector will be used for all tests in a given describe context.
-   * This contrasts with the default behaviour where a new injector is created per test case.
-   *
-   * Use sharedInjector when you want to take advantage of Jasmine's `beforeAll()`, or mocha's
-   * `before()` methods. Call `module.sharedInjector()` before you setup any other hooks that
-   * will create (i.e call `module()`) or use (i.e call `inject()`) the injector.
-   *
-   * You cannot call `sharedInjector()` from within a context already using `sharedInjector()`.
-   *
-   * ## Example
-   *
-   * Typically beforeAll is used to make many assertions about a single operation. This can
-   * cut down test run-time as the test setup doesn't need to be re-run, and enabling focussed
-   * tests each with a single assertion.
-   *
-   * ```js
-   * describe("Deep Thought", function() {
-   *
-   *   module.sharedInjector();
-   *
-   *   beforeAll(module("UltimateQuestion"));
-   *
-   *   beforeAll(inject(function(DeepThought) {
-   *     expect(DeepThought.answer).toBeUndefined();
-   *     DeepThought.generateAnswer();
-   *   }));
-   *
-   *   it("has calculated the answer correctly", inject(function(DeepThought) {
-   *     // Because of sharedInjector, we have access to the instance of the DeepThought service
-   *     // that was provided to the beforeAll() hook. Therefore we can test the generated answer
-   *     expect(DeepThought.answer).toBe(42);
-   *   }));
-   *
-   *   it("has calculated the answer within the expected time", inject(function(DeepThought) {
-   *     expect(DeepThought.runTimeMillennia).toBeLessThan(8000);
-   *   }));
-   *
-   *   it("has double checked the answer", inject(function(DeepThought) {
-   *     expect(DeepThought.absolutelySureItIsTheRightAnswer).toBe(true);
-   *   }));
-   *
-   * });
-   *
-   * ```
-   */
-  module.sharedInjector = function() {
-    if (!(module.$$beforeAllHook && module.$$afterAllHook)) {
-      throw Error('sharedInjector() cannot be used unless your test runner defines beforeAll/afterAll');
-    }
-
-    var initialized = false;
-
-    module.$$beforeAllHook(/** @this */ function() {
-      if (injectorState.shared) {
-        injectorState.sharedError = Error('sharedInjector() cannot be called inside a context that has already called sharedInjector()');
-        throw injectorState.sharedError;
-      }
-      initialized = true;
-      currentSpec = this;
-      injectorState.shared = true;
-    });
-
-    module.$$afterAllHook(function() {
-      if (initialized) {
-        injectorState = new InjectorState();
-        module.$$cleanup();
-      } else {
-        injectorState.sharedError = null;
-      }
-    });
-  };
-
-  module.$$beforeEach = function() {
-    if (injectorState.shared && currentSpec && currentSpec !== this) {
-      var state = currentSpec;
-      currentSpec = this;
-      angular.forEach(['$injector','$modules','$providerInjector', '$injectorStrict'], function(k) {
-        currentSpec[k] = state[k];
-        state[k] = null;
-      });
-    } else {
-      currentSpec = this;
-      originalRootElement = null;
-      annotatedFunctions = [];
-    }
-  };
-
-  module.$$afterEach = function() {
-    if (injectorState.cleanupAfterEach()) {
-      module.$$cleanup();
-    }
-  };
-
-  module.$$cleanup = function() {
-    var injector = currentSpec.$injector;
-
-    annotatedFunctions.forEach(function(fn) {
-      delete fn.$inject;
-    });
-
-    currentSpec.$injector = null;
-    currentSpec.$modules = null;
-    currentSpec.$providerInjector = null;
-    currentSpec = null;
-
-    if (injector) {
-      // Ensure `$rootElement` is instantiated, before checking `originalRootElement`
-      var $rootElement = injector.get('$rootElement');
-      var rootNode = $rootElement && $rootElement[0];
-      var cleanUpNodes = !originalRootElement ? [] : [originalRootElement[0]];
-      if (rootNode && (!originalRootElement || rootNode !== originalRootElement[0])) {
-        cleanUpNodes.push(rootNode);
-      }
-      angular.element.cleanData(cleanUpNodes);
-
-      // Ensure `$destroy()` is available, before calling it
-      // (a mocked `$rootScope` might not implement it (or not even be an object at all))
-      var $rootScope = injector.get('$rootScope');
-      if ($rootScope && $rootScope.$destroy) $rootScope.$destroy();
-    }
-
-    // clean up jquery's fragment cache
-    angular.forEach(angular.element.fragments, function(val, key) {
-      delete angular.element.fragments[key];
-    });
-
-    MockXhr.$$lastInstance = null;
-
-    angular.forEach(angular.callbacks, function(val, key) {
-      delete angular.callbacks[key];
-    });
-    angular.callbacks.$$counter = 0;
-  };
-
-  (window.beforeEach || window.setup)(module.$$beforeEach);
-  (window.afterEach || window.teardown)(module.$$afterEach);
-
-  /**
-   * @ngdoc function
-   * @name angular.mock.inject
-   * @description
-   *
-   * *NOTE*: This function is also published on window for easy access.<br>
-   * *NOTE*: This function is declared ONLY WHEN running tests with jasmine or mocha
-   *
-   * The inject function wraps a function into an injectable function. The inject() creates new
-   * instance of {@link auto.$injector $injector} per test, which is then used for
-   * resolving references.
-   *
-   *
-   * ## Resolving References (Underscore Wrapping)
-   * Often, we would like to inject a reference once, in a `beforeEach()` block and reuse this
-   * in multiple `it()` clauses. To be able to do this we must assign the reference to a variable
-   * that is declared in the scope of the `describe()` block. Since we would, most likely, want
-   * the variable to have the same name of the reference we have a problem, since the parameter
-   * to the `inject()` function would hide the outer variable.
-   *
-   * To help with this, the injected parameters can, optionally, be enclosed with underscores.
-   * These are ignored by the injector when the reference name is resolved.
-   *
-   * For example, the parameter `_myService_` would be resolved as the reference `myService`.
-   * Since it is available in the function body as `_myService_`, we can then assign it to a variable
-   * defined in an outer scope.
-   *
-   * ```
-   * // Defined out reference variable outside
-   * var myService;
-   *
-   * // Wrap the parameter in underscores
-   * beforeEach( inject( function(_myService_){
-   *   myService = _myService_;
-   * }));
-   *
-   * // Use myService in a series of tests.
-   * it('makes use of myService', function() {
-   *   myService.doStuff();
-   * });
-   *
-   * ```
-   *
-   * See also {@link angular.mock.module angular.mock.module}
-   *
-   * ## Example
-   * Example of what a typical jasmine tests looks like with the inject method.
-   * ```js
-   *
-   *   angular.module('myApplicationModule', [])
-   *       .value('mode', 'app')
-   *       .value('version', 'v1.0.1');
-   *
-   *
-   *   describe('MyApp', function() {
-   *
-   *     // You need to load modules that you want to test,
-   *     // it loads only the "ng" module by default.
-   *     beforeEach(module('myApplicationModule'));
-   *
-   *
-   *     // inject() is used to inject arguments of all given functions
-   *     it('should provide a version', inject(function(mode, version) {
-   *       expect(version).toEqual('v1.0.1');
-   *       expect(mode).toEqual('app');
-   *     }));
-   *
-   *
-   *     // The inject and module method can also be used inside of the it or beforeEach
-   *     it('should override a version and test the new version is injected', function() {
-   *       // module() takes functions or strings (module aliases)
-   *       module(function($provide) {
-   *         $provide.value('version', 'overridden'); // override version here
-   *       });
-   *
-   *       inject(function(version) {
-   *         expect(version).toEqual('overridden');
-   *       });
-   *     });
-   *   });
-   *
-   * ```
-   *
-   * @param {...Function} fns any number of functions which will be injected using the injector.
-   */
-
-
-
-  var ErrorAddingDeclarationLocationStack = function ErrorAddingDeclarationLocationStack(e, errorForStack) {
-    this.message = e.message;
-    this.name = e.name;
-    if (e.line) this.line = e.line;
-    if (e.sourceId) this.sourceId = e.sourceId;
-    if (e.stack && errorForStack)
-      this.stack = e.stack + '\n' + errorForStack.stack;
-    if (e.stackArray) this.stackArray = e.stackArray;
-  };
-  ErrorAddingDeclarationLocationStack.prototype = Error.prototype;
-
-  window.inject = angular.mock.inject = function() {
-    var blockFns = Array.prototype.slice.call(arguments, 0);
-    var errorForStack = new Error('Declaration Location');
-    // IE10+ and PhanthomJS do not set stack trace information, until the error is thrown
-    if (!errorForStack.stack) {
-      try {
-        throw errorForStack;
-      } catch (e) { /* empty */ }
-    }
-    return wasInjectorCreated() ? WorkFn.call(currentSpec) : WorkFn;
-    /////////////////////
-    function WorkFn() {
-      var modules = currentSpec.$modules || [];
-      var strictDi = !!currentSpec.$injectorStrict;
-      modules.unshift(['$injector', function($injector) {
-        currentSpec.$providerInjector = $injector;
-      }]);
-      modules.unshift('ngMock');
-      modules.unshift('ng');
-      var injector = currentSpec.$injector;
-      if (!injector) {
-        if (strictDi) {
-          // If strictDi is enabled, annotate the providerInjector blocks
-          angular.forEach(modules, function(moduleFn) {
-            if (typeof moduleFn === 'function') {
-              angular.injector.$$annotate(moduleFn);
-            }
-          });
-        }
-        injector = currentSpec.$injector = angular.injector(modules, strictDi);
-        currentSpec.$injectorStrict = strictDi;
-      }
-      for (var i = 0, ii = blockFns.length; i < ii; i++) {
-        if (currentSpec.$injectorStrict) {
-          // If the injector is strict / strictDi, and the spec wants to inject using automatic
-          // annotation, then annotate the function here.
-          injector.annotate(blockFns[i]);
-        }
-        try {
-          injector.invoke(blockFns[i] || angular.noop, this);
-        } catch (e) {
-          if (e.stack && errorForStack) {
-            throw new ErrorAddingDeclarationLocationStack(e, errorForStack);
-          }
-          throw e;
-        } finally {
-          errorForStack = null;
-        }
-      }
-    }
-  };
-
-
-  angular.mock.inject.strictDi = function(value) {
-    value = arguments.length ? !!value : true;
-    return wasInjectorCreated() ? workFn() : workFn;
-
-    function workFn() {
-      if (value !== currentSpec.$injectorStrict) {
-        if (currentSpec.$injector) {
-          throw new Error('Injector already created, can not modify strict annotations');
-        } else {
-          currentSpec.$injectorStrict = value;
-        }
-      }
-    }
-  };
-
-  function InjectorState() {
-    this.shared = false;
-    this.sharedError = null;
-
-    this.cleanupAfterEach = function() {
-      return !this.shared || this.sharedError;
-    };
-  }
-})(window.jasmine || window.mocha);
-
-'use strict';
-
-(function() {
-  /**
-   * Triggers a browser event. Attempts to choose the right event if one is
-   * not specified.
-   *
-   * @param {Object} element Either a wrapped jQuery/jqLite node or a DOMElement
-   * @param {string} eventType Optional event type
-   * @param {Object=} eventData An optional object which contains additional event data (such as x,y
-   * coordinates, keys, etc...) that are passed into the event when triggered
-   */
-  window.browserTrigger = function browserTrigger(element, eventType, eventData) {
-    if (element && !element.nodeName) element = element[0];
-    if (!element) return;
-
-    eventData = eventData || {};
-    var relatedTarget = eventData.relatedTarget || element;
-    var keys = eventData.keys;
-    var x = eventData.x;
-    var y = eventData.y;
-
-    var inputType = (element.type) ? element.type.toLowerCase() : null,
-        nodeName = element.nodeName.toLowerCase();
-    if (!eventType) {
-      eventType = {
-        'text':            'change',
-        'textarea':        'change',
-        'hidden':          'change',
-        'password':        'change',
-        'button':          'click',
-        'submit':          'click',
-        'reset':           'click',
-        'image':           'click',
-        'checkbox':        'click',
-        'radio':           'click',
-        'select-one':      'change',
-        'select-multiple': 'change',
-        '_default_':       'click'
-      }[inputType || '_default_'];
-    }
-
-    if (nodeName === 'option') {
-      element.parentNode.value = element.value;
-      element = element.parentNode;
-      eventType = 'change';
-    }
-
-    keys = keys || [];
-    function pressed(key) {
-      return keys.indexOf(key) !== -1;
-    }
-
-    var evnt;
-    if (/transitionend/.test(eventType)) {
-      if (window.WebKitTransitionEvent) {
-        evnt = new window.WebKitTransitionEvent(eventType, eventData);
-        evnt.initEvent(eventType, false, true);
-      } else {
-        try {
-          evnt = new window.TransitionEvent(eventType, eventData);
-        } catch (e) {
-          evnt = window.document.createEvent('TransitionEvent');
-          evnt.initTransitionEvent(eventType, null, null, null, eventData.elapsedTime || 0);
-        }
-      }
-    } else if (/animationend/.test(eventType)) {
-      if (window.WebKitAnimationEvent) {
-        evnt = new window.WebKitAnimationEvent(eventType, eventData);
-        evnt.initEvent(eventType, false, true);
-      } else {
-        try {
-          evnt = new window.AnimationEvent(eventType, eventData);
-        } catch (e) {
-          evnt = window.document.createEvent('AnimationEvent');
-          evnt.initAnimationEvent(eventType, null, null, null, eventData.elapsedTime || 0);
-        }
-      }
-    } else if (/touch/.test(eventType) && supportsTouchEvents()) {
-      evnt = createTouchEvent(element, eventType, x, y);
-    } else if (/key/.test(eventType)) {
-      evnt = window.document.createEvent('Events');
-      evnt.initEvent(eventType, eventData.bubbles, eventData.cancelable);
-      evnt.view = window;
-      evnt.ctrlKey = pressed('ctrl');
-      evnt.altKey = pressed('alt');
-      evnt.shiftKey = pressed('shift');
-      evnt.metaKey = pressed('meta');
-      evnt.keyCode = eventData.keyCode;
-      evnt.charCode = eventData.charCode;
-      evnt.which = eventData.which;
-    } else {
-      evnt = window.document.createEvent('MouseEvents');
-      x = x || 0;
-      y = y || 0;
-      evnt.initMouseEvent(eventType, true, true, window, 0, x, y, x, y, pressed('ctrl'),
-          pressed('alt'), pressed('shift'), pressed('meta'), 0, relatedTarget);
-    }
-
-    /* we're unable to change the timeStamp value directly so this
-     * is only here to allow for testing where the timeStamp value is
-     * read */
-    evnt.$manualTimeStamp = eventData.timeStamp;
-
-    if (!evnt) return;
-
-    var originalPreventDefault = evnt.preventDefault,
-        appWindow = element.ownerDocument.defaultView,
-        fakeProcessDefault = true,
-        finalProcessDefault,
-        angular = appWindow.angular || {};
-
-    // igor: temporary fix for https://bugzilla.mozilla.org/show_bug.cgi?id=684208
-    angular['ff-684208-preventDefault'] = false;
-    evnt.preventDefault = function() {
-      fakeProcessDefault = false;
-      return originalPreventDefault.apply(evnt, arguments);
-    };
-
-    if (!eventData.bubbles || supportsEventBubblingInDetachedTree() || isAttachedToDocument(element)) {
-      element.dispatchEvent(evnt);
-    } else {
-      triggerForPath(element, evnt);
-    }
-
-    finalProcessDefault = !(angular['ff-684208-preventDefault'] || !fakeProcessDefault);
-
-    delete angular['ff-684208-preventDefault'];
-
-    return finalProcessDefault;
-  };
-
-  function supportsTouchEvents() {
-    if ('_cached' in supportsTouchEvents) {
-      return supportsTouchEvents._cached;
-    }
-    if (!window.document.createTouch || !window.document.createTouchList) {
-      supportsTouchEvents._cached = false;
-      return false;
-    }
-    try {
-      window.document.createEvent('TouchEvent');
-    } catch (e) {
-      supportsTouchEvents._cached = false;
-      return false;
-    }
-    supportsTouchEvents._cached = true;
-    return true;
-  }
-
-  function createTouchEvent(element, eventType, x, y) {
-    var evnt = new window.Event(eventType);
-    x = x || 0;
-    y = y || 0;
-
-    var touch = window.document.createTouch(window, element, Date.now(), x, y, x, y);
-    var touches = window.document.createTouchList(touch);
-
-    evnt.touches = touches;
-
-    return evnt;
-  }
-
-  function supportsEventBubblingInDetachedTree() {
-    if ('_cached' in supportsEventBubblingInDetachedTree) {
-      return supportsEventBubblingInDetachedTree._cached;
-    }
-    supportsEventBubblingInDetachedTree._cached = false;
-    var doc = window.document;
-    if (doc) {
-      var parent = doc.createElement('div'),
-          child = parent.cloneNode();
-      parent.appendChild(child);
-      parent.addEventListener('e', function() {
-        supportsEventBubblingInDetachedTree._cached = true;
-      });
-      var evnt = window.document.createEvent('Events');
-      evnt.initEvent('e', true, true);
-      child.dispatchEvent(evnt);
-    }
-    return supportsEventBubblingInDetachedTree._cached;
-  }
-
-  function triggerForPath(element, evnt) {
-    var stop = false;
-
-    var _stopPropagation = evnt.stopPropagation;
-    evnt.stopPropagation = function() {
-      stop = true;
-      _stopPropagation.apply(evnt, arguments);
-    };
-    patchEventTargetForBubbling(evnt, element);
-    do {
-      element.dispatchEvent(evnt);
-      // eslint-disable-next-line no-unmodified-loop-condition
-    } while (!stop && (element = element.parentNode));
-  }
-
-  function patchEventTargetForBubbling(event, target) {
-    event._target = target;
-    Object.defineProperty(event, 'target', {get: function() { return this._target;}});
-  }
-
-  function isAttachedToDocument(element) {
-    while ((element = element.parentNode)) {
-        if (element === window) {
-            return true;
-        }
-    }
-    return false;
-  }
-})();
-
-
-})(window, window.angular);
+})(window, window.angular);;window.ngMaterial={version:{full: "1.1.4"}};
