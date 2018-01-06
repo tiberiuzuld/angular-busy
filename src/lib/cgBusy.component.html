@@ -1,0 +1,25 @@
+<div class="cg-busy cg-busy-animation {{options.wrapperClass}}" [hidden]="!tracker.active()">
+  <div class="cg-busy-backdrop cg-busy-backdrop-animation" [hidden]="!options.backdrop"></div>
+  <ng-container class="cg-busy-template"
+                [ngTemplateOutlet]="options.templateRef ? options.templateRef : defaultTemplate"
+                [ngTemplateOutletContext]="{options: options}"></ng-container>
+</div>
+<ng-template #defaultTemplate>
+  <div class="cg-busy-default-sign">
+    <div class="cg-busy-default-spinner">
+      <div class="bar1"></div>
+      <div class="bar2"></div>
+      <div class="bar3"></div>
+      <div class="bar4"></div>
+      <div class="bar5"></div>
+      <div class="bar6"></div>
+      <div class="bar7"></div>
+      <div class="bar8"></div>
+      <div class="bar9"></div>
+      <div class="bar10"></div>
+      <div class="bar11"></div>
+      <div class="bar12"></div>
+    </div>
+    <div class="cg-busy-default-text" [innerHtml]="options.message"></div>
+  </div>
+</ng-template>

@@ -1,0 +1,105 @@
+<div class="layout-column flex">
+  <div>
+    <h2>angular-busy2</h2>
+    <p>Show busy/loading indicators on any HTTPClient request, Observable, Promise, Boolean, Number</p>
+  </div>
+  <div class="layout-column layout-gt-md-row layout-align-space-between flex">
+    <form class="flex layout-column" #demoForm="ngForm">
+      <label class="mat-headline">Demo Options</label>
+      <mat-form-field>
+        <input matInput type="number" name="delayInput" required min="0" [(ngModel)]="delay" placeholder="Delay (ms)">
+      </mat-form-field>
+      <mat-form-field>
+        <input matInput type="number" name="durationInput" required min="0" [(ngModel)]="minDuration"
+               placeholder="Min Duration (ms)">
+      </mat-form-field>
+      <mat-form-field>
+        <input matInput type="text" name="message" [(ngModel)]="message" placeholder="Message">
+      </mat-form-field>
+      <mat-checkbox [(ngModel)]="backdrop" name="backdrop">Show Backdrop</mat-checkbox>
+      <mat-checkbox [(ngModel)]="showCustomTemplate" name="customTemplate">Show Custom Template</mat-checkbox>
+      <mat-form-field>
+        <mat-select id="promiseType" [(ngModel)]="promiseType" name="promiseType" placeholder="Promise type">
+          <mat-option *ngFor="let promiseType of promiseTypes" [value]="promiseType"
+                      [innerText]="promiseType.label"></mat-option>
+        </mat-select>
+      </mat-form-field>
+      <div class="layout-row layout-align-end-center">
+        <button type="submit" mat-raised-button [disabled]="!demoForm.form.valid" (click)="demo()">
+          Demo
+        </button>
+      </div>
+    </form>
+
+    <div class="flex">
+      <mat-grid-list cols="4" rowHeight="40px" gutterSize="5" [cgBusy]="promise"
+                     [cgBusyConfig]="{templateRef: showCustomTemplate ? customTemplate: null,message:message,backdrop:backdrop,delay:delay,minDuration:minDuration}">
+        <mat-grid-tile>
+          <b>#</b>
+        </mat-grid-tile>
+        <mat-grid-tile>
+          <b>First Name</b>
+        </mat-grid-tile>
+        <mat-grid-tile>
+          <b>Last Name</b>
+        </mat-grid-tile>
+        <mat-grid-tile>
+          <b>Username</b>
+        </mat-grid-tile>
+        <mat-grid-tile>
+          <div>1</div>
+        </mat-grid-tile>
+        <mat-grid-tile>
+          <div>Mark</div>
+        </mat-grid-tile>
+        <mat-grid-tile>
+          <div>Otto</div>
+        </mat-grid-tile>
+        <mat-grid-tile>
+          <div>@mdo</div>
+        </mat-grid-tile>
+        <mat-grid-tile>
+          <div>2</div>
+        </mat-grid-tile>
+        <mat-grid-tile>
+          <div>Mark</div>
+        </mat-grid-tile>
+        <mat-grid-tile>
+          <div>Otto</div>
+        </mat-grid-tile>
+        <mat-grid-tile>
+          <div>@TwBootstrap</div>
+        </mat-grid-tile>
+        <mat-grid-tile>
+          <div>3</div>
+        </mat-grid-tile>
+        <mat-grid-tile>
+          <div>Jacob</div>
+        </mat-grid-tile>
+        <mat-grid-tile>
+          <div>Thornton</div>
+        </mat-grid-tile>
+        <mat-grid-tile>
+          <div>@fat</div>
+        </mat-grid-tile>
+        <mat-grid-tile>
+          <div>4</div>
+        </mat-grid-tile>
+        <mat-grid-tile>
+          <div>Larry</div>
+        </mat-grid-tile>
+        <mat-grid-tile>
+          <div>the Bird</div>
+        </mat-grid-tile>
+        <mat-grid-tile>
+          <div>@twitter</div>
+        </mat-grid-tile>
+      </mat-grid-list>
+    </div>
+  </div>
+</div>
+<ng-template #customTemplate let-options="options">
+  <div class="custom-template">
+    <div class="custom-message" [innerHtml]="options.message"></div>
+  </div>
+</ng-template>
