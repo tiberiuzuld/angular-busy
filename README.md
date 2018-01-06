@@ -1,4 +1,4 @@
-# angular-busy2 [Live Demo](https://tiberiuzuld.github.io/angular-busy/dist)
+# angular-busy2 [Live Demo](https://tiberiuzuld.github.io/angular-busy)
 
 [![npm version](https://badge.fury.io/js/angular-busy2.svg)](https://badge.fury.io/js/angular-busy2)
 [![dependencies Status](https://david-dm.org/tiberiuzuld/angular-busy2/status.svg)](https://david-dm.org/tiberiuzuld/angular-busy2)
