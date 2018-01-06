@@ -15,7 +15,7 @@
 
 ## Demo
 
-[Live Demo](https://tiberiuzuld.github.io/angular-busy/dist)
+[Live Demo](https://tiberiuzuld.github.io/angular-busy)
 
 ## Getting Started
 
