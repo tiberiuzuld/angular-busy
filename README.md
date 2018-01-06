@@ -8,7 +8,7 @@
 
 > Show busy/loading indicators on any HTTPClient request, Observable, Promise, Boolean, Number
 
-
+### Note Requires Angular5 for [AngularJS 1 branch 1.x](https://github.com/tiberiuzuld/angular-busy/tree/1.x)
 ## Getting Started
 
 Install with npm.
