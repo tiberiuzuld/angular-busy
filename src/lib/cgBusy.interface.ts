@@ -1,10 +1,10 @@
+import {TemplateRef} from '@angular/core';
+
 export interface CgBusyOptions {
-  promise: CgBusyPromise;
-  templateUrl?: string;
+  templateRef?: TemplateRef<any>;
   message?: string;
+  wrapperClass?: string;
   backdrop?: boolean;
   delay?: number;
   minDuration?: number;
 }
-
-export type CgBusyPromise = any;

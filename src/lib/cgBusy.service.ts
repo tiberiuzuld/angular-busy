@@ -1,43 +1,51 @@
 import {Injectable} from '@angular/core';
+import {Subscription} from 'rxjs/Subscription';
+
+export interface TrackerOptions {
+  minDuration: number;
+  delay: number;
+  promises: Array<any>;
+}
 
 @Injectable()
 export class CgBusyService {
   promises: Array<any>;
-  delayPromise: number;
-  durationPromise: number;
+  subscriptions: Array<Subscription>;
+  delayPromise: any;
+  durationPromise: any;
   minDuration: number;
+  detectChanges: Function | null;
 
   constructor() {
     this.promises = [];
+    this.subscriptions = [];
   }
 
-  static isPromise(promiseThing) {
-    const then = promiseThing && (promiseThing.then || promiseThing.$then ||
-      (promiseThing.$promise && promiseThing.$promise.then) || (promiseThing.promise && promiseThing.promise.then));
-
-    return typeof then !== 'undefined';
+  static isPromise(promiseThing: any): boolean {
+    return promiseThing && (promiseThing.then || promiseThing.finally || promiseThing.subscribe);
   }
 
-  static callThen(promiseThing, success, error) {
-    let promise;
-    if (promiseThing.then || promiseThing.$then) {
-      promise = promiseThing;
-    } else if (promiseThing.$promise) {
-      promise = promiseThing.$promise;
-    } else if (promiseThing.promise) {
-      promise = promiseThing.promise;
+  callThen(promiseThing: any, callback: Function): void {
+    if (promiseThing.finally) {
+      promiseThing.finally(callback);
+    } else if (promiseThing.then) {
+      promiseThing.then(callback, callback);
+    } else if (promiseThing.subscribe) {
+      let subscription: Subscription;
+      const cc = () => {
+        subscription.unsubscribe();
+        callback();
+      };
+      subscription = promiseThing.subscribe(undefined, cc, cc);
+      this.subscriptions.push(subscription);
     }
-
-    const then = (promise.then || promise.$then);
-
-    then.call(promise, success, error);
   }
 
-  reset(options) {
+  reset(options: TrackerOptions): void {
     this.minDuration = options.minDuration;
 
     this.promises = [];
-    this.promises.forEach(options.promises, function (p) {
+    options.promises.forEach((p) => {
       if (!p || p.$cgBusyFulfilled) {
         return;
       }
@@ -50,7 +58,7 @@ export class CgBusyService {
     }
 
     if (options.delay) {
-      this.delayPromise = setTimeout(function () {
+      this.delayPromise = setTimeout(() => {
         this.delayPromise = null;
         this.createMinDuration(options);
       }, options.delay);
@@ -59,18 +67,18 @@ export class CgBusyService {
     }
   }
 
-  createMinDuration(options) {
+  createMinDuration(options: TrackerOptions): void {
     if (options.minDuration) {
-      this.durationPromise = setTimeout(function () {
+      this.durationPromise = setTimeout(() => {
         this.durationPromise = null;
       }, options.minDuration);
     }
   }
 
-  addPromiseLikeThing(promise) {
+  addPromiseLikeThing(promise: any): void {
 
     if (!CgBusyService.isPromise(promise)) {
-      throw new Error('cgBusy expects a promise (or something that has a .promise or .$promise');
+      throw new Error('cgBusy expects a Promise or an Observable');
     }
 
     if (this.promises.indexOf(promise) !== -1) {
@@ -78,7 +86,7 @@ export class CgBusyService {
     }
     this.promises.push(promise);
 
-    CgBusyService.callThen(promise, function () {
+    this.callThen(promise, () => {
       promise.$cgBusyFulfilled = true;
       if (this.promises.indexOf(promise) === -1) {
         return;
@@ -87,16 +95,30 @@ export class CgBusyService {
       if (this.delayPromise && this.promises.length === 0) {
         clearTimeout(this.delayPromise);
       }
-    }, function () {
-      promise.$cgBusyFulfilled = true;
-      if (this.promises.indexOf(promise) === -1) {
-        return;
+      if (this.detectChanges) {
+        this.detectChanges();
       }
-      this.promises.splice(this.promises.indexOf(promise), 1);
     });
   }
 
-  active() {
-    return !this.delayPromise && (this.durationPromise || this.promises.length > 0);
+  active(): boolean {
+    return !this.delayPromise && (!!this.durationPromise || this.promises.length > 0);
+  }
+
+  destroy(): void {
+    if (this.delayPromise) {
+      clearTimeout(this.delayPromise);
+      this.delayPromise = null;
+    }
+    if (this.durationPromise) {
+      clearTimeout(this.durationPromise);
+      this.durationPromise = null;
+    }
+    this.promises = [];
+    this.subscriptions.forEach((subscription) => {
+      subscription.unsubscribe();
+    });
+    this.subscriptions = [];
+    this.detectChanges = null;
   }
 }

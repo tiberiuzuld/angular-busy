@@ -12,13 +12,14 @@ export class AppComponent implements OnInit {
   minDuration: number;
   message: string;
   backdrop: boolean;
+  showCustomTemplate: boolean;
   promise: any;
   templateUrl: string;
-  templates: Array<{ label: string, url: string }>;
   promiseTypes: Array<{ id: number, label: string, value: any }>;
   promiseType: { id: number, label: string, value: any };
 
   constructor(private http: HttpClient) {
+    this.showCustomTemplate = false;
   }
 
   ngOnInit() {
@@ -29,19 +30,13 @@ export class AppComponent implements OnInit {
     this.promise = null;
     this.templateUrl = '';
 
-    this.templates = [
-      {label: 'Standard', url: ''},
-      {label: 'Custom', url: 'app/custom-template.html'}
-    ];
-    const longPromise = new Promise(function () {
-    });
     this.promiseTypes = [
       {id: 0, label: 'Promise', value: this.getHttp.bind(this)},
-      {id: 0, label: 'Defer', value: longPromise},
-      {id: 1, label: 'Number', value: 1},
-      {id: 2, label: 'Number `falsy`', value: 0},
-      {id: 3, label: 'Boolean', value: true},
-      {id: 4, label: 'Boolean false', value: false}
+      {id: 1, label: 'Observable', value: this.getHttpObserver.bind(this)},
+      {id: 2, label: 'Number', value: 1},
+      {id: 3, label: 'Number `falsy`', value: 0},
+      {id: 4, label: 'Boolean', value: true},
+      {id: 5, label: 'Boolean false', value: false}
     ];
 
     this.promiseType = this.promiseTypes[0];
@@ -49,6 +44,10 @@ export class AppComponent implements OnInit {
 
   getHttp() {
     return this.http.get('https://httpbin.org/delay/3').toPromise();
+  }
+
+  getHttpObserver() {
+    return this.http.get('https://httpbin.org/delay/3');
   }
 
   demo() {

@@ -7,11 +7,10 @@ mat-grid-list mat-grid-tile figure {
 }
 
 .custom-template {
-  background-image: url('../assets/finalfantasy.gif');
-  background-position: 50% 20px;
-  background-repeat: no-repeat;
+  background: url('../assets/finalfantasy.gif') no-repeat 50% 20px;
   width: 100%;
   height: 100%;
+  position: absolute;
 }
 
 .custom-message {

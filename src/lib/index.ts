@@ -1,3 +1,3 @@
-export {CgBusyOptions, CgBusyPromise} from './cgBusy.interface';
-export {CgBusyDirective} from './cgBusy.directive';
+export {CgBusyOptions} from './cgBusy.interface';
 export {CgBusyModule} from './cgBusy.module';
+export {CgBusyDefaults} from './cgBusyDefaults.service';
