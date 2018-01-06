@@ -13,7 +13,7 @@
   text-align: center;
 }
 
-[cg-busy], [angular-busy] {
+[cgBusy] {
   position: relative;
 }
 

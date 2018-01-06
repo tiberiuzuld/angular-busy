@@ -1,29 +1,14 @@
-/**
- *  Welcome to your gulpfile!
- *  The gulp tasks are splitted in several files in the gulp directory
- *  because putting all here was really too long
- */
+const gulp = require('gulp'),
+  inlineNg2Template = require('gulp-inline-ng2-template'),
+  clean = require('gulp-clean');
 
-'use strict';
-
-var gulp = require('gulp');
-var wrench = require('wrench');
-
-/**
- *  This will load all js or coffee files in the gulp directory
- *  in order to load all gulp tasks
- */
-wrench.readdirSyncRecursive('./gulp').filter(function(file) {
-  return (/\.(js|coffee)$/i).test(file);
-}).map(function(file) {
-  require('./gulp/' + file);
+gulp.task('clean', function () {
+  return gulp.src(['./tmp', './dist'], {read: false})
+    .pipe(clean());
 });
 
-
-/**
- *  Default task clean temporaries directories and launch the
- *  main optimization build task
- */
-gulp.task('default', ['clean'], function () {
-  gulp.start('build');
+gulp.task('inline-templates', ['clean'], function () {
+  return gulp.src('./src/lib/*.ts')
+    .pipe(inlineNg2Template({base: 'src/lib', UseRelativePaths: true, indent: 0, removeLineBreaks: true}))
+    .pipe(gulp.dest('.tmp'));
 });

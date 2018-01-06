@@ -1,0 +1,102 @@
+<div class="layout-column flex">
+  <div>
+    <h2>angular-busy2</h2>
+    <p>Show busy/loading indicators on any $http or $resource request, or on any promise.</p>
+  </div>
+  <div class="layout-column layout-gt-md-row layout-align-space-between flex">
+    <form class="flex layout-column" #demoForm="ngForm">
+      <label class="mat-headline">Demo Options</label>
+      <md-divider></md-divider>
+      <md-input-container>
+        <input mdInput type="number" name="delayInput" required min="0" [(ngModel)]="delay" placeholder="Delay (ms)">
+      </md-input-container>
+      <md-input-container>
+        <input mdInput type="number" name="durationInput" required min="0" [(ngModel)]="minDuration"
+               placeholder="Min Duration (ms)">
+      </md-input-container>
+      <md-input-container>
+        <input mdInput type="text" name="message" [(ngModel)]="message" placeholder="Message">
+      </md-input-container>
+      <md-checkbox [(ngModel)]="backdrop" name="backdrop">Show Backdrop</md-checkbox>
+      <md-select [(ngModel)]="templateUrl" name="templateUrl" placeholder="Template Url">
+        <md-option *ngFor="let template of templates" [value]="template.url"
+                   [innerText]="template.label"></md-option>
+      </md-select>
+      <md-select id="promiseType" [(ngModel)]="promiseType" name="promiseType" placeholder="Promise type">
+        <md-option *ngFor="let promiseType of promiseTypes" [value]="promiseType"
+                   [innerText]="promiseType.label"></md-option>
+      </md-select>
+      <div class="layout-row layout-align-end-center">
+        <button type="submit" md-raised-button [disabled]="!demoForm.form.valid" (click)="demo()">
+          Demo
+        </button>
+      </div>
+    </form>
+
+    <div class="flex"
+         [cgBusy]="{promise:promise,templateUrl:templateUrl,message:message,backdrop:backdrop,delay:delay,minDuration:minDuration}">
+      <md-grid-list cols="4" rowHeight="40px" gutterSize="5">
+        <md-grid-tile>
+          <b>#</b>
+        </md-grid-tile>
+        <md-grid-tile>
+          <b>First Name</b>
+        </md-grid-tile>
+        <md-grid-tile>
+          <b>Last Name</b>
+        </md-grid-tile>
+        <md-grid-tile>
+          <b>Username</b>
+        </md-grid-tile>
+        <md-grid-tile>
+          <div>1</div>
+        </md-grid-tile>
+        <md-grid-tile>
+          <div>Mark</div>
+        </md-grid-tile>
+        <md-grid-tile>
+          <div>Otto</div>
+        </md-grid-tile>
+        <md-grid-tile>
+          <div>@mdo</div>
+        </md-grid-tile>
+        <md-grid-tile>
+          <div>2</div>
+        </md-grid-tile>
+        <md-grid-tile>
+          <div>Mark</div>
+        </md-grid-tile>
+        <md-grid-tile>
+          <div>Otto</div>
+        </md-grid-tile>
+        <md-grid-tile>
+          <div>@TwBootstrap</div>
+        </md-grid-tile>
+        <md-grid-tile>
+          <div>3</div>
+        </md-grid-tile>
+        <md-grid-tile>
+          <div>Jacob</div>
+        </md-grid-tile>
+        <md-grid-tile>
+          <div>Thornton</div>
+        </md-grid-tile>
+        <md-grid-tile>
+          <div>@fat</div>
+        </md-grid-tile>
+        <md-grid-tile>
+          <div>4</div>
+        </md-grid-tile>
+        <md-grid-tile>
+          <div>Larry</div>
+        </md-grid-tile>
+        <md-grid-tile>
+          <div>the Bird</div>
+        </md-grid-tile>
+        <md-grid-tile>
+          <div>@twitter</div>
+        </md-grid-tile>
+      </md-grid-list>
+    </div>
+  </div>
+</div>

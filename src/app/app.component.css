@@ -1,0 +1,67 @@
+md-grid-list {
+  min-width: 400px;
+}
+
+md-grid-list md-grid-tile figure {
+  justify-content: flex-start;
+}
+
+.custom-template {
+  background-image: url('../assets/finalfantasy.gif');
+  background-position: 50% 20px;
+  background-repeat: no-repeat;
+  width: 100%;
+  height: 100%;
+}
+
+.custom-message {
+  text-align: center;
+  font-size: 26px;
+  position: absolute;
+  top: 100px;
+  width: 100%;
+  text-shadow: 1px 1px 2px white, -1px -1px 2px white, -4px 4px 4px white, -4px 4px 4px white;
+}
+
+.mat-select {
+  margin-top: 25px;
+}
+
+.flex {
+  flex: 1 auto;
+}
+
+.layout-column {
+  display: flex;
+  flex-direction: column;
+}
+
+.layout-row {
+  display: flex;
+  flex-direction: row;
+}
+
+@media (min-width: 1280px) {
+  .layout-gt-md-row {
+    display: flex;
+    flex-direction: row;
+  }
+}
+
+.layout-align-space-between {
+  justify-content: space-between;
+}
+
+.layout-align-end-center {
+  align-items: center;
+  justify-content: flex-end;
+}
+
+:host {
+  padding: 8px;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
