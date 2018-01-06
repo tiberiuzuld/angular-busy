@@ -1,17 +1,17 @@
 import {CommonModule} from '@angular/common';
 import {NgModule} from '@angular/core';
-import {cgBusyDirective} from "./cgBusy.directive";
+import {CgBusyDirective} from './cgBusy.directive';
 
 @NgModule({
   declarations: [
-    cgBusyDirective
+    CgBusyDirective
   ],
   imports: [
     CommonModule
   ],
-  exports: [cgBusyDirective],
+  exports: [CgBusyDirective],
   providers: [],
   bootstrap: []
 })
-export class cgBusyModule {
+export class CgBusyModule {
 }

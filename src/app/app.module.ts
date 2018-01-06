@@ -3,17 +3,11 @@ import {BrowserAnimationsModule} from '@angular/platform-browser/animations';
 import {NgModule} from '@angular/core';
 import {FormsModule} from '@angular/forms';
 import 'hammerjs';
-import {
-  MdButtonModule,
-  MdSelectModule,
-  MdInputModule,
-  MdCheckboxModule,
-  MdGridListModule
-} from '@angular/material';
+import {MatButtonModule, MatCheckboxModule, MatGridListModule, MatInputModule, MatSelectModule} from '@angular/material';
 
 import {AppComponent} from './app.component';
-import {cgBusyModule} from '../lib/cgBusy.module';
-import {HttpClientModule} from "@angular/common/http";
+import {CgBusyModule} from '../lib';
+import {HttpClientModule} from '@angular/common/http';
 
 @NgModule({
   declarations: [
@@ -24,8 +18,8 @@ import {HttpClientModule} from "@angular/common/http";
     BrowserAnimationsModule,
     HttpClientModule,
     FormsModule,
-    MdButtonModule, MdSelectModule, MdInputModule, MdCheckboxModule, MdGridListModule,
-    cgBusyModule
+    MatButtonModule, MatSelectModule, MatInputModule, MatCheckboxModule, MatGridListModule,
+    CgBusyModule
   ],
   providers: [],
   bootstrap: [AppComponent]

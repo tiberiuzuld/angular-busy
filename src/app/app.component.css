@@ -1,8 +1,8 @@
-md-grid-list {
+mat-grid-list {
   min-width: 400px;
 }
 
-md-grid-list md-grid-tile figure {
+mat-grid-list mat-grid-tile figure {
   justify-content: flex-start;
 }
 

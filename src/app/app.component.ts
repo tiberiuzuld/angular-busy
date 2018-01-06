@@ -1,5 +1,5 @@
 import {ChangeDetectionStrategy, Component, OnInit} from '@angular/core';
-import {HttpClient} from "@angular/common/http";
+import {HttpClient} from '@angular/common/http';
 
 @Component({
   selector: 'cg-busy-app',
@@ -57,6 +57,6 @@ export class AppComponent implements OnInit {
     } else {
       this.promise = this.promiseType.value;
     }
-  };
+  }
 
 }

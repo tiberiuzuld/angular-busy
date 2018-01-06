@@ -1,8 +1,8 @@
-import {Injectable} from "@angular/core";
-import {cgBusyOptions} from "./cgBusy.interface";
+import {Injectable} from '@angular/core';
+import {CgBusyOptions} from './cgBusy.interface';
 
 @Injectable()
-export class cgBusyDefaults implements cgBusyOptions {
+export class CgBusyDefaults implements CgBusyOptions {
   templateUrl: string;
   delay: number;
   minDuration: number;
@@ -17,6 +17,6 @@ export class cgBusyDefaults implements cgBusyOptions {
     this.minDuration = 0;
     this.backdrop = true;
     this.message = 'Please Wait...';
-    this.wrapperClass = ''
+    this.wrapperClass = '';
   }
 }

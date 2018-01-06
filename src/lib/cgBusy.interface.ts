@@ -1,5 +1,5 @@
-export interface cgBusyOptions {
-  promise: cgBusyPromise;
+export interface CgBusyOptions {
+  promise: CgBusyPromise;
   templateUrl?: string;
   message?: string;
   backdrop?: boolean;
@@ -7,4 +7,4 @@ export interface cgBusyOptions {
   minDuration?: number;
 }
 
-export type cgBusyPromise = any;
+export type CgBusyPromise = any;

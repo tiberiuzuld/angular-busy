@@ -1,18 +1,18 @@
 import {Directive, ElementRef, Input} from '@angular/core';
-import {cgBusyOptions, cgBusyPromise} from "./cgBusy.interface";
-import {cgBusyService} from "./cgBusy.service";
-import {cgBusyDefaults} from "lib/cgBusyDefaults.service";
+import {CgBusyOptions, CgBusyPromise} from './cgBusy.interface';
+import {CgBusyService} from './cgBusy.service';
+import {CgBusyDefaults} from 'lib/cgBusyDefaults.service';
 
 @Directive({selector: '[cgBusy]'})
-export class cgBusyDirective {
-  @Input('cgBusy') options: cgBusyOptions | cgBusyPromise;
-  tracker: cgBusyService;
+export class CgBusyDirective {
+  @Input('cgBusy') options: CgBusyOptions | CgBusyPromise;
+  tracker: CgBusyService;
   fakePromise: any;
 
-  constructor(el: ElementRef, defaultOptions: cgBusyDefaults) {
+  constructor(el: ElementRef, defaultOptions: CgBusyDefaults) {
 
     var templateScope;
-    this.tracker = new cgBusyService();
+    this.tracker = new CgBusyService();
 
     templateScope = scope.$new();
 
