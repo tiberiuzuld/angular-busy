@@ -1,5 +1,6 @@
 import {Injectable} from '@angular/core';
 import {Subscription} from 'rxjs/Subscription';
+import {Observable} from 'rxjs/Observable';
 
 export interface TrackerOptions {
   minDuration: number;
@@ -22,7 +23,7 @@ export class CgBusyService {
   }
 
   static isPromise(promiseThing: any): boolean {
-    return promiseThing && (promiseThing.then || promiseThing.finally || promiseThing.subscribe);
+    return promiseThing && (promiseThing instanceof Promise || promiseThing instanceof Observable || promiseThing instanceof Subscription);
   }
 
   callThen(promiseThing: any, callback: Function): void {
@@ -30,7 +31,7 @@ export class CgBusyService {
       promiseThing.finally(callback);
     } else if (promiseThing.then) {
       promiseThing.then(callback, callback);
-    } else if (promiseThing.subscribe) {
+    } else if (promiseThing instanceof Observable) {
       let subscription: Subscription;
       const cc = () => {
         subscription.unsubscribe();
@@ -38,6 +39,10 @@ export class CgBusyService {
       };
       subscription = promiseThing.subscribe(undefined, cc, cc);
       this.subscriptions.push(subscription);
+    } else if (promiseThing instanceof Subscription) {
+      promiseThing.add(callback);
+    } else {
+      throw new Error('cgBusy expects a Promise ,an Observable or a Subscription');
     }
   }
 
@@ -78,7 +83,7 @@ export class CgBusyService {
   addPromiseLikeThing(promise: any): void {
 
     if (!CgBusyService.isPromise(promise)) {
-      throw new Error('cgBusy expects a Promise or an Observable');
+      throw new Error('cgBusy expects a Promise ,an Observable or a Subscription');
     }
 
     if (this.promises.indexOf(promise) !== -1) {

@@ -6,7 +6,7 @@
 [![downloads](https://img.shields.io/npm/dm/angular-busy2.svg)](https://www.npmjs.com/package/angular-busy2)
 [![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.paypal.me/tiberiuzuld)
 
-> Show busy/loading indicators on any HTTPClient request, Observable, Promise, Boolean, Number
+> Show busy/loading indicators on Observable, Subscription, Promise, Boolean, Number
 
 ### Note Requires Angular5 for [AngularJS 1 branch 1.x](https://github.com/tiberiuzuld/angular-busy/tree/1.x)
 ## Getting Started
@@ -30,7 +30,7 @@ import {CgBusyModule} from 'angular-busy2';
 
 ## Options
 
-The `[cgBusy]` directive expects either an Observable, Promise, Boolean, Number and optional `[cgBusyConfig]` configuration object.
+The `[cgBusy]` directive expects any Observable, Subscription, Promise, Boolean, Number and optional `[cgBusyConfig]` configuration object.
 
 In other words.  You may do this:
 

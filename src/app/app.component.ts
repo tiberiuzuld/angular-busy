@@ -33,6 +33,7 @@ export class AppComponent implements OnInit {
     this.promiseTypes = [
       {id: 0, label: 'Promise', value: this.getHttp.bind(this)},
       {id: 1, label: 'Observable', value: this.getHttpObserver.bind(this)},
+      {id: 1, label: 'Subscription', value: this.getHttpSubscription.bind(this)},
       {id: 2, label: 'Number', value: 1},
       {id: 3, label: 'Number `falsy`', value: 0},
       {id: 4, label: 'Boolean', value: true},
@@ -48,6 +49,11 @@ export class AppComponent implements OnInit {
 
   getHttpObserver() {
     return this.http.get('https://httpbin.org/delay/3');
+  }
+
+  getHttpSubscription() {
+    return this.http.get('https://httpbin.org/delay/3').subscribe(() => {
+    });
   }
 
   demo() {
