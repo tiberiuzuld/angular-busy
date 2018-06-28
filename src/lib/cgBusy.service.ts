@@ -1,6 +1,6 @@
 import {Injectable} from '@angular/core';
-import {Subscription} from 'rxjs/Subscription';
-import {Observable} from 'rxjs/Observable';
+
+import {Observable, Subscription} from 'rxjs';
 
 export interface TrackerOptions {
   minDuration: number;
