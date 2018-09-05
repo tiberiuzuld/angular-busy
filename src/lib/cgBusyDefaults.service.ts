@@ -22,7 +22,5 @@ export class CgBusyDefaults implements CgBusyOptions {
     this.backdrop = busyOptions.backdrop || true;
     this.message = busyOptions.message || 'Please Wait...';
     this.wrapperClass = busyOptions.wrapperClass || '';
-
-    console.log(this.message);
   }
 }

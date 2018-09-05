@@ -36,10 +36,7 @@ export class CgBusyModule {
 }
 
 export function cgBusyDefaultsFactory(busyOptions?: CgBusyOptions): CgBusyDefaults {
-console.log('factory');
-  const busyDefaults = new CgBusyDefaults(busyOptions);
-
-  return busyDefaults;
+  return new CgBusyDefaults(busyOptions);
 }
 
 export const BUSY_OPTIONS = new InjectionToken<CgBusyOptions>('BUSY_OPTIONS');
