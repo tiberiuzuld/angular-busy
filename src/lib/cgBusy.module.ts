@@ -5,6 +5,12 @@ import {CgBusyDefaults} from './cgBusyDefaults.service';
 import {CgBusyComponent} from './cgBusy.component';
 import {CgBusyOptions} from './cgBusy.interface';
 
+export function cgBusyDefaultsFactory(busyOptions?: CgBusyOptions): CgBusyDefaults {
+  return new CgBusyDefaults(busyOptions);
+}
+
+export const BUSY_OPTIONS = new InjectionToken<CgBusyOptions>('BUSY_OPTIONS');
+
 @NgModule({
   declarations: [
     CgBusyDirective,
@@ -34,9 +40,3 @@ export class CgBusyModule {
     };
   }
 }
-
-export function cgBusyDefaultsFactory(busyOptions?: CgBusyOptions): CgBusyDefaults {
-  return new CgBusyDefaults(busyOptions);
-}
-
-export const BUSY_OPTIONS = new InjectionToken<CgBusyOptions>('BUSY_OPTIONS');
