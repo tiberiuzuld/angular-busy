@@ -1,5 +1,5 @@
 import {CommonModule} from '@angular/common';
-import {NgModule} from '@angular/core';
+import {ModuleWithProviders, NgModule} from '@angular/core';
 import {CgBusyDirective} from './cgBusy.directive';
 import {CgBusyDefaults} from './cgBusyDefaults.service';
 import {CgBusyComponent} from './cgBusy.component';
@@ -14,7 +14,17 @@ import {CgBusyComponent} from './cgBusy.component';
   ],
   exports: [CgBusyDirective],
   entryComponents: [CgBusyComponent],
-  providers: [CgBusyDefaults]
 })
 export class CgBusyModule {
+  static forRoot(busyConfig?: CgBusyDefaults): ModuleWithProviders {
+    return {
+      ngModule: CgBusyModule,
+      providers: [
+        {
+          provide: CgBusyDefaults,
+          useValue: busyConfig ? busyConfig : new CgBusyDefaults()
+        }
+      ]
+    };
+  }
 }
