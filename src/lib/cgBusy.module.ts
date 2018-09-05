@@ -1,8 +1,9 @@
 import {CommonModule} from '@angular/common';
-import {ModuleWithProviders, NgModule} from '@angular/core';
+import {InjectionToken, ModuleWithProviders, NgModule} from '@angular/core';
 import {CgBusyDirective} from './cgBusy.directive';
 import {CgBusyDefaults} from './cgBusyDefaults.service';
 import {CgBusyComponent} from './cgBusy.component';
+import {CgBusyOptions} from './cgBusy.interface';
 
 @NgModule({
   declarations: [
@@ -16,15 +17,29 @@ import {CgBusyComponent} from './cgBusy.component';
   entryComponents: [CgBusyComponent],
 })
 export class CgBusyModule {
-  static forRoot(busyConfig?: CgBusyDefaults): ModuleWithProviders {
+  static forRoot(busyOptions?: CgBusyOptions): ModuleWithProviders {
     return {
       ngModule: CgBusyModule,
       providers: [
         {
           provide: CgBusyDefaults,
-          useValue: busyConfig ? busyConfig : new CgBusyDefaults()
+          useFactory: cgBusyDefaultsFactory,
+          deps: [BUSY_OPTIONS]
+        },
+        {
+          provide: BUSY_OPTIONS,
+          useValue: busyOptions
         }
       ]
     };
   }
 }
+
+export function cgBusyDefaultsFactory(busyOptions?: CgBusyOptions): CgBusyDefaults {
+console.log('factory');
+  const busyDefaults = new CgBusyDefaults(busyOptions);
+
+  return busyDefaults;
+}
+
+export const BUSY_OPTIONS = new InjectionToken<CgBusyOptions>('BUSY_OPTIONS');

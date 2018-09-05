@@ -22,7 +22,7 @@ import {HttpClientModule} from '@angular/common/http';
     HttpClientModule,
     FormsModule,
     MatButtonModule, MatSelectModule, MatInputModule, MatCheckboxModule, MatGridListModule, MatFormFieldModule,
-    CgBusyModule
+    CgBusyModule.forRoot()
   ],
   providers: [],
   bootstrap: [AppComponent]
