@@ -19,7 +19,7 @@ export class CgBusyDefaults implements CgBusyOptions {
 
     this.delay = busyOptions.delay || 0;
     this.minDuration = busyOptions.minDuration || 0;
-    this.backdrop = busyOptions.backdrop || true;
+    this.backdrop = busyOptions.backdrop !== undefined ? busyOptions.backdrop : true;
     this.message = busyOptions.message || 'Please Wait...';
     this.wrapperClass = busyOptions.wrapperClass || '';
   }
