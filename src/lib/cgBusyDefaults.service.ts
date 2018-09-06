@@ -1,5 +1,6 @@
-import {Injectable, TemplateRef} from '@angular/core';
+import {Inject, Injectable, TemplateRef} from '@angular/core';
 import {CgBusyOptions} from './cgBusy.interface';
+import {BUSY_OPTIONS} from './cgBusy.module';
 
 @Injectable()
 export class CgBusyDefaults implements CgBusyOptions {
@@ -10,11 +11,16 @@ export class CgBusyDefaults implements CgBusyOptions {
   wrapperClass: string;
   templateRef: TemplateRef<any>;
 
-  constructor() {
-    this.delay = 0;
-    this.minDuration = 0;
-    this.backdrop = true;
-    this.message = 'Please Wait...';
-    this.wrapperClass = '';
+  constructor(@Inject(BUSY_OPTIONS) busyOptions?: CgBusyOptions) {
+
+    if (!busyOptions) {
+      busyOptions = {};
+    }
+
+    this.delay = busyOptions.delay || 0;
+    this.minDuration = busyOptions.minDuration || 0;
+    this.backdrop = busyOptions.backdrop !== undefined ? busyOptions.backdrop : true;
+    this.message = busyOptions.message || 'Please Wait...';
+    this.wrapperClass = busyOptions.wrapperClass || '';
   }
 }
