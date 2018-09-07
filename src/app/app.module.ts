@@ -9,7 +9,7 @@ import {
 } from '@angular/material';
 
 import {AppComponent} from './app.component';
-import {CgBusyModule} from '../lib';
+import {CgBusyModule} from 'angular-busy2';
 import {HttpClientModule} from '@angular/common/http';
 
 @NgModule({

@@ -2,7 +2,7 @@ import {ChangeDetectionStrategy, Component, OnInit} from '@angular/core';
 import {HttpClient} from '@angular/common/http';
 
 @Component({
-  selector: 'cg-busy-app',
+  selector: 'app-cg-busy',
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.css'],
   changeDetection: ChangeDetectionStrategy.OnPush
