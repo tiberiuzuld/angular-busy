@@ -18,15 +18,23 @@ npm install angular-busy2 --save
 ```
 
 Add `CgBusyModule` as a module dependency for your module.
+You have import it with `forRoot` in any module where you want to provide `CgBusyDefaults`. 
+Usually you do that in your root module (`app.module`).
+If you never import it with `forRoot` `CgBusyDefaults` will always be `undefined`.
+`forRoot` takes optional `CgBusyOptions` as parameter. For every omitted option in the supplied `CgBusyOptions` the libraries default value will be used.
 
 ```typescript
 import {CgBusyModule} from 'angular-busy2';
 @NgModule({
  imports: [
-   CgBusyModule
+     CgBusyModule.forRoot({
+         backdrop: true
+     }) //import it with .forRoot in your root module. provide some optional Options.
  ]
 });
 ```
+
+In every shared module/sub module you should import `CgBusyModule` without `forRoot` unless you want to provide a different instance of `CgBusyDefaults`
 
 ## Options
 
