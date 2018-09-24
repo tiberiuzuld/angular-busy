@@ -34,7 +34,9 @@ export class CgBusyService {
     } else if (promiseThing instanceof Observable) {
       let subscription: Subscription;
       const cc = () => {
-        subscription.unsubscribe();
+        if (subscription) {
+          subscription.unsubscribe();
+        }
         callback();
       };
       subscription = promiseThing.subscribe(undefined, cc, cc);
