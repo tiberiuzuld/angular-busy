@@ -1,7 +1,7 @@
 import {CommonModule} from '@angular/common';
 import {InjectionToken, ModuleWithProviders, NgModule} from '@angular/core';
 import {CgBusyDirective} from './cgBusy.directive';
-import {CgBusyDefaults} from './cgBusyDefaults.service';
+import {BUSY_OPTIONS, CgBusyDefaults} from './cgBusyDefaults.service';
 import {CgBusyComponent} from './cgBusy.component';
 import {CgBusyOptions} from './cgBusy.interface';
 
@@ -9,7 +9,6 @@ export function cgBusyDefaultsFactory(busyOptions?: CgBusyOptions): CgBusyDefaul
   return new CgBusyDefaults(busyOptions);
 }
 
-export const BUSY_OPTIONS = new InjectionToken<CgBusyOptions>('BUSY_OPTIONS');
 
 @NgModule({
   declarations: [
