@@ -15,15 +15,12 @@
       "node_modules/@types"
     ],
     "lib": [
-      "es2017",
+      "es2018",
       "dom"
     ],
     "paths": {
       "angular-busy2": [
         "dist/angular-busy2"
-      ],
-      "angular-busy2/*": [
-        "dist/angular-busy2/*"
       ]
     }
   }
