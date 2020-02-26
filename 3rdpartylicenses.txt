@@ -90,6 +90,7 @@ MIT
 
 angular-busy2
 MIT
+../../LICENSE
 
 core-js
 MIT
