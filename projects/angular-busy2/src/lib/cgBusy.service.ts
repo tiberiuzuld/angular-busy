@@ -15,7 +15,7 @@ export class CgBusyService {
   delayPromise: any;
   durationPromise: any;
   minDuration: number;
-  detectChanges: Function | null;
+  detectChanges: () => void | null;
 
   constructor() {
     this.promises = [];
@@ -26,7 +26,7 @@ export class CgBusyService {
     return promiseThing && (promiseThing instanceof Promise || promiseThing instanceof Observable || promiseThing instanceof Subscription);
   }
 
-  callThen(promiseThing: any, callback: Function): void {
+  callThen(promiseThing: any, callback: () => void): void {
     if (promiseThing.finally) {
       promiseThing.finally(callback);
     } else if (promiseThing.then) {
@@ -39,7 +39,7 @@ export class CgBusyService {
         }
         callback();
       };
-      subscription = promiseThing.subscribe(undefined, cc, cc);
+      subscription = promiseThing.subscribe({error: cc, complete: cc});
       this.subscriptions.push(subscription);
     } else if (promiseThing instanceof Subscription) {
       promiseThing.add(callback);

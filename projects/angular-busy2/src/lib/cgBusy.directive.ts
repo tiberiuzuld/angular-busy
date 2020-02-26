@@ -1,5 +1,13 @@
 import {
-  ComponentFactoryResolver, ComponentRef, Directive, ElementRef, Input, OnChanges, OnDestroy, Renderer2, SimpleChanges,
+  ComponentFactoryResolver,
+  ComponentRef,
+  Directive,
+  ElementRef,
+  Input,
+  OnChanges,
+  OnDestroy,
+  Renderer2,
+  SimpleChanges,
   ViewContainerRef
 } from '@angular/core';
 import {CgBusyOptions} from './cgBusy.interface';
@@ -27,7 +35,7 @@ export class CgBusyDirective implements OnChanges, OnDestroy {
     const componentFactory = this.componentFactoryResolver.resolveComponentFactory(CgBusyComponent);
     this.componentRef = this.viewContainer.createComponent(componentFactory);
     this.tracker = new CgBusyService();
-    this.tracker.detectChanges = this.componentRef.changeDetectorRef.detectChanges.bind(this.componentRef);
+    this.tracker.detectChanges = () => this.componentRef.changeDetectorRef.detectChanges();
     this.componentRef.instance.tracker = this.tracker;
     this.componentRef.instance.options = this.$options;
   }
