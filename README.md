@@ -9,7 +9,7 @@
 
 > Show busy/loading indicators on Observable, Subscription, Promise, Boolean, Number
 
-### Note Requires Angular8 for [AngularJS 1 branch 1.x](https://github.com/tiberiuzuld/angular-busy/tree/1.x)
+### For [AngularJS 1 branch 1.x](https://github.com/tiberiuzuld/angular-busy/tree/1.x)
 ## Getting Started
 
 Install with npm.
