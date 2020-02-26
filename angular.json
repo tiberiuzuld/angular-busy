@@ -43,6 +43,7 @@
                   "with": "src/environments/environment.prod.ts"
                 }
               ],
+              "baseHref": "/angular-busy/",
               "optimization": true,
               "outputHashing": "all",
               "sourceMap": false,
