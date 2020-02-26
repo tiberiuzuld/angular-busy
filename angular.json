@@ -13,6 +13,7 @@
         "build": {
           "builder": "@angular-devkit/build-angular:browser",
           "options": {
+            "aot": true,
             "outputPath": "dist/demo",
             "index": "src/index.html",
             "main": "src/main.ts",
@@ -30,6 +31,12 @@
           },
           "configurations": {
             "production": {
+              "budgets": [
+                {
+                  "type": "anyComponentStyle",
+                  "maximumWarning": "6kb"
+                }
+              ],
               "fileReplacements": [
                 {
                   "replace": "src/environments/environment.ts",
@@ -106,6 +113,14 @@
               "devServerTarget": "angular-busy2-app:serve:production"
             }
           }
+        },
+        "deploy": {
+          "builder": "angular-cli-ghpages:deploy",
+          "options": {
+            "repo": "https://GH_TOKEN@github.com/tiberiuzuld/angular-busy.git",
+            "name": "Tiberiu Zuld",
+            "email": "tiberiuzuld@gmail.com"
+          }
         }
       }
     },
@@ -120,6 +135,12 @@
           "options": {
             "tsConfig": "projects/angular-busy2/tsconfig.lib.json",
             "project": "projects/angular-busy2/ng-package.json"
+          },
+          "configurations": {
+            "production": {
+              "project": "projects/angular-busy2/ng-package.prod.json",
+              "tsConfig": "projects/angular-busy2/tsconfig.lib.prod.json"
+            }
           }
         },
         "test": {
@@ -145,5 +166,8 @@
       }
     }
   },
-  "defaultProject": "angular-busy2-app"
+  "defaultProject": "angular-busy2-app",
+  "cli": {
+    "analytics": "1f4c9dbf-755c-4ca9-a896-da7d97faf505"
+  }
 }
