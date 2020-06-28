@@ -18,8 +18,7 @@ export function cgBusyDefaultsFactory(busyOptions?: CgBusyOptions): CgBusyDefaul
   imports: [
     CommonModule
   ],
-  exports: [CgBusyDirective],
-  entryComponents: [CgBusyComponent],
+  exports: [CgBusyDirective]
 })
 export class CgBusyModule {
   static forRoot(busyOptions?: CgBusyOptions): ModuleWithProviders<CgBusyModule> {

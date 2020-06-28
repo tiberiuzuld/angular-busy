@@ -14,16 +14,19 @@ import {CgBusyOptions} from './cgBusy.interface';
 import {CgBusyService} from './cgBusy.service';
 import {CgBusyDefaults} from './cgBusyDefaults.service';
 import {CgBusyComponent} from './cgBusy.component';
+import {Observable, Subscription} from 'rxjs';
 
 @Directive({selector: '[cgBusy]'})
 export class CgBusyDirective implements OnChanges, OnDestroy {
-  @Input() cgBusy: any;
+  // tslint:disable-next-line:no-any
+  @Input() cgBusy: boolean | number | Promise<any> | Subscription | Observable<any>;
   @Input() cgBusyConfig: CgBusyOptions;
   tracker: CgBusyService;
-  fakePromise: any;
-  fakePromiseResolve: any;
+  fakePromise: Promise<void>;
+  fakePromiseResolve: () => void;
   $options: CgBusyOptions;
-  $promise: Array<any>;
+  // tslint:disable-next-line:no-any
+  $promise: (Promise<any> | Subscription | Observable<any>)[];
   componentRef: ComponentRef<CgBusyComponent>;
 
   constructor(private viewContainer: ViewContainerRef, private defaultOptions: CgBusyDefaults,
@@ -67,6 +70,7 @@ export class CgBusyDirective implements OnChanges, OnDestroy {
       } else if (Array.isArray(this.cgBusy)) {
         this.$promise = this.cgBusy;
       } else {
+        // @ts-ignore
         this.$promise = [this.cgBusy];
       }
     }

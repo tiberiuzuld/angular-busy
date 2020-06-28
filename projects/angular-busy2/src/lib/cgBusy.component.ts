@@ -1,4 +1,4 @@
-import {ChangeDetectorRef, Component, Input, ViewEncapsulation} from '@angular/core';
+import {Component, Input, ViewEncapsulation} from '@angular/core';
 import {CgBusyOptions} from './cgBusy.interface';
 import {CgBusyService} from './cgBusy.service';
 
@@ -12,6 +12,4 @@ export class CgBusyComponent {
   @Input() options: CgBusyOptions;
   @Input() tracker: CgBusyService;
 
-  constructor(public ref: ChangeDetectorRef) {
-  }
 }

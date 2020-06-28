@@ -1,6 +1,6 @@
 {
   "name": "angular-busy2",
-  "version": "11.0.1",
+  "version": "12.0.0",
   "license": "MIT",
   "homepage": "https://tiberiuzuld.github.io/angular-busy/",
   "bugs": {
@@ -24,8 +24,10 @@
     "Tiberiu Zuld"
   ],
   "peerDependencies": {
-    "@angular/common": "^9.0.0",
-    "@angular/core": "^9.0.0",
-    "tslib": "^1.10.0"
+    "@angular/common": "^10.0.0",
+    "@angular/core": "^10.0.0"
+  },
+  "dependencies": {
+    "tslib": "^2.0.0"
   }
 }

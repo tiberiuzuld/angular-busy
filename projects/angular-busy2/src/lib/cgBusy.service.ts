@@ -5,15 +5,17 @@ import {Observable, Subscription} from 'rxjs';
 export interface TrackerOptions {
   minDuration: number;
   delay: number;
-  promises: Array<any>;
+  // tslint:disable-next-line:no-any
+  promises: any[];
 }
 
 @Injectable()
 export class CgBusyService {
-  promises: Array<any>;
-  subscriptions: Array<Subscription>;
-  delayPromise: any;
-  durationPromise: any;
+  // tslint:disable-next-line:no-any
+  promises: any[];
+  subscriptions: Subscription[];
+  delayPromise: number;
+  durationPromise: number;
   minDuration: number;
   detectChanges: () => void | null;
 
@@ -22,10 +24,12 @@ export class CgBusyService {
     this.subscriptions = [];
   }
 
-  static isPromise(promiseThing: any): boolean {
+  // tslint:disable-next-line:no-any
+  static isPromise(promiseThing: PromiseLike<any>): boolean {
     return promiseThing && (promiseThing instanceof Promise || promiseThing instanceof Observable || promiseThing instanceof Subscription);
   }
 
+  // tslint:disable-next-line:no-any
   callThen(promiseThing: any, callback: () => void): void {
     if (promiseThing.finally) {
       promiseThing.finally(callback);
@@ -67,6 +71,9 @@ export class CgBusyService {
     if (options.delay) {
       this.delayPromise = setTimeout(() => {
         this.delayPromise = null;
+        if (this.detectChanges) {
+          this.detectChanges();
+        }
         this.createMinDuration(options);
       }, options.delay);
     } else {
@@ -78,10 +85,14 @@ export class CgBusyService {
     if (options.minDuration) {
       this.durationPromise = setTimeout(() => {
         this.durationPromise = null;
+        if (this.detectChanges) {
+          this.detectChanges();
+        }
       }, options.minDuration);
     }
   }
 
+  // tslint:disable-next-line:no-any
   addPromiseLikeThing(promise: any): void {
 
     if (!CgBusyService.isPromise(promise)) {
@@ -101,6 +112,7 @@ export class CgBusyService {
       this.promises.splice(this.promises.indexOf(promise), 1);
       if (this.delayPromise && this.promises.length === 0) {
         clearTimeout(this.delayPromise);
+        this.delayPromise = null;
       }
       if (this.detectChanges) {
         this.detectChanges();

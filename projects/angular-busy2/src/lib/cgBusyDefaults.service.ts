@@ -10,6 +10,7 @@ export class CgBusyDefaults implements CgBusyOptions {
   backdrop: boolean;
   message: string;
   wrapperClass: string;
+  // tslint:disable-next-line:no-any
   templateRef: TemplateRef<any>;
 
   constructor(@Inject(BUSY_OPTIONS) busyOptions?: CgBusyOptions) {

@@ -1,5 +1,6 @@
 import {ChangeDetectionStrategy, Component, OnInit} from '@angular/core';
 import {HttpClient} from '@angular/common/http';
+import {Observable, Subscription} from 'rxjs';
 
 @Component({
   selector: 'app-cg-busy',
@@ -13,16 +14,19 @@ export class AppComponent implements OnInit {
   message: string;
   backdrop: boolean;
   showCustomTemplate: boolean;
+  // tslint:disable-next-line:no-any
   promise: any;
   templateUrl: string;
-  promiseTypes: Array<{ id: number, label: string, value: any }>;
+  // tslint:disable-next-line:no-any
+  promiseTypes: { id: number, label: string, value: any }[];
+  // tslint:disable-next-line:no-any
   promiseType: { id: number, label: string, value: any };
 
   constructor(private http: HttpClient) {
     this.showCustomTemplate = false;
   }
 
-  ngOnInit() {
+  ngOnInit(): void {
     this.delay = 0;
     this.minDuration = 0;
     this.message = 'Please Wait...';
@@ -43,20 +47,22 @@ export class AppComponent implements OnInit {
     this.promiseType = this.promiseTypes[0];
   }
 
-  getHttp() {
+  // tslint:disable-next-line:no-any
+  getHttp(): Promise<any> {
     return this.http.get('https://httpbin.org/delay/3').toPromise();
   }
 
-  getHttpObserver() {
+  // tslint:disable-next-line:no-any
+  getHttpObserver(): Observable<any> {
     return this.http.get('https://httpbin.org/delay/3');
   }
 
-  getHttpSubscription() {
+  getHttpSubscription(): Subscription {
     return this.http.get('https://httpbin.org/delay/3').subscribe(() => {
     });
   }
 
-  demo() {
+  demo(): void {
     if (typeof this.promiseType.value === 'function') {
       this.promise = this.promiseType.value();
     } else {
