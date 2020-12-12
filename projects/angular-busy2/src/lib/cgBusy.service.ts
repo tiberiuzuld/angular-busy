@@ -1,5 +1,3 @@
-import {Injectable} from '@angular/core';
-
 import {Observable, Subscription} from 'rxjs';
 
 export interface TrackerOptions {
@@ -9,7 +7,6 @@ export interface TrackerOptions {
   promises: any[];
 }
 
-@Injectable()
 export class CgBusyService {
   // tslint:disable-next-line:no-any
   promises: any[];
