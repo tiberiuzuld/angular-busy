@@ -22,7 +22,8 @@
     "paths": {
       "angular-busy2": [
         "dist/angular-busy2/angular-busy2",
-        "dist/angular-busy2"
+        "dist/angular-busy2",
+        "projects/angular-busy2/src/public_api.ts"
       ]
     }
   },
