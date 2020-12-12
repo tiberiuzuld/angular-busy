@@ -48,7 +48,7 @@ export class CgBusyService {
     } else if (promiseThing instanceof Subscription) {
       promiseThing.add(callback);
     } else {
-      throw new Error('cgBusy expects a Promise ,an Observable or a Subscription');
+      throw new Error('cgBusy expects a Promise ,an Observable, a Subscription, a number or a boolean');
     }
   }
 
@@ -96,7 +96,7 @@ export class CgBusyService {
   addPromiseLikeThing(promise: any): void {
 
     if (!CgBusyService.isPromise(promise)) {
-      throw new Error('cgBusy expects a Promise ,an Observable or a Subscription');
+      throw new Error('cgBusy expects a Promise ,an Observable, a Subscription, a number or a boolean');
     }
 
     if (this.promises.indexOf(promise) !== -1) {
