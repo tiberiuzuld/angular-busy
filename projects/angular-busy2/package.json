@@ -24,8 +24,8 @@
     "Tiberiu Zuld"
   ],
   "peerDependencies": {
-    "@angular/common": "^10.0.0",
-    "@angular/core": "^10.0.0"
+    "@angular/common": "^11.0.0",
+    "@angular/core": "^11.0.0"
   },
   "dependencies": {
     "tslib": "^2.0.0"

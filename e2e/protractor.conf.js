@@ -16,6 +16,7 @@ exports.config = {
     'browserName': 'chrome'
   },
   directConnect: true,
+  SELENIUM_PROMISE_MANAGER: false,
   baseUrl: 'http://localhost:4200/',
   framework: 'jasmine',
   jasmineNodeOpts: {
@@ -28,10 +29,10 @@ exports.config = {
     require('ts-node').register({
       project: require('path').join(__dirname, './tsconfig.json')
     });
-    jasmine.getEnv().addReporter(new SpecReporter(new SpecReporter({
+    jasmine.getEnv().addReporter(new SpecReporter({
       spec: {
         displayStacktrace: StacktraceOption.PRETTY
       }
-    })));
+    }));
   }
 };
