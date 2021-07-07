@@ -19,7 +19,7 @@ import {Observable, Subscription} from 'rxjs';
 @Directive({selector: '[cgBusy]'})
 export class CgBusyDirective implements OnChanges, OnDestroy {
   // tslint:disable-next-line:no-any
-  @Input() cgBusy: boolean | number | Promise<any> | Subscription | Observable<any>;
+  @Input() cgBusy: boolean | number | Promise<any> | Subscription | Observable<any> | (Promise<any> | Subscription | Observable<any>)[];
   @Input() cgBusyConfig: CgBusyOptions;
   tracker: CgBusyService;
   fakePromise: Promise<void>;
