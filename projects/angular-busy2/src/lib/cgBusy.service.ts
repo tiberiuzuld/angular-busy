@@ -3,12 +3,12 @@ import {Observable, Subscription} from 'rxjs';
 export interface TrackerOptions {
   minDuration: number;
   delay: number;
-  // tslint:disable-next-line:no-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   promises: any[];
 }
 
 export class CgBusyService {
-  // tslint:disable-next-line:no-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   promises: any[];
   subscriptions: Subscription[];
   delayPromise: number;
@@ -21,12 +21,12 @@ export class CgBusyService {
     this.subscriptions = [];
   }
 
-  // tslint:disable-next-line:no-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   static isPromise(promiseThing: PromiseLike<any>): boolean {
     return promiseThing && (promiseThing instanceof Promise || promiseThing instanceof Observable || promiseThing instanceof Subscription);
   }
 
-  // tslint:disable-next-line:no-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   callThen(promiseThing: any, callback: () => void): void {
     if (promiseThing.finally) {
       promiseThing.finally(callback);
@@ -89,7 +89,7 @@ export class CgBusyService {
     }
   }
 
-  // tslint:disable-next-line:no-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   addPromiseLikeThing(promise: any): void {
 
     if (!CgBusyService.isPromise(promise)) {

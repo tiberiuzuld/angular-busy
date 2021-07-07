@@ -18,14 +18,14 @@ import {Observable, Subscription} from 'rxjs';
 
 @Directive({selector: '[cgBusy]'})
 export class CgBusyDirective implements OnChanges, OnDestroy {
-  // tslint:disable-next-line:no-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   @Input() cgBusy: boolean | number | Promise<any> | Subscription | Observable<any> | (Promise<any> | Subscription | Observable<any>)[];
   @Input() cgBusyConfig: CgBusyOptions;
   tracker: CgBusyService;
   fakePromise: Promise<void>;
   fakePromiseResolve: () => void;
   $options: CgBusyOptions;
-  // tslint:disable-next-line:no-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   $promise: (Promise<any> | Subscription | Observable<any>)[];
   componentRef: ComponentRef<CgBusyComponent>;
 

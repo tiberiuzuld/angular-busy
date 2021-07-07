@@ -10,7 +10,7 @@ export class CgBusyDefaults implements CgBusyOptions {
   backdrop: boolean;
   message: string;
   wrapperClass: string;
-  // tslint:disable-next-line:no-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   templateRef: TemplateRef<any>;
 
   constructor(@Inject(BUSY_OPTIONS) busyOptions?: CgBusyOptions) {

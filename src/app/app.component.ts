@@ -14,12 +14,12 @@ export class AppComponent implements OnInit {
   message: string;
   backdrop: boolean;
   showCustomTemplate: boolean;
-  // tslint:disable-next-line:no-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   promise: any;
   templateUrl: string;
-  // tslint:disable-next-line:no-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   promiseTypes: { id: number, label: string, value: any }[];
-  // tslint:disable-next-line:no-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   promiseType: { id: number, label: string, value: any };
 
   constructor(private http: HttpClient) {
@@ -47,12 +47,12 @@ export class AppComponent implements OnInit {
     this.promiseType = this.promiseTypes[0];
   }
 
-  // tslint:disable-next-line:no-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getHttp(): Promise<any> {
     return this.http.get('https://httpbin.org/delay/3').toPromise();
   }
 
-  // tslint:disable-next-line:no-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getHttpObserver(): Observable<any> {
     return this.http.get('https://httpbin.org/delay/3');
   }
