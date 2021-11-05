@@ -19,7 +19,7 @@ npm install angular-busy2 --save
 ```
 
 Add `CgBusyModule` as a module dependency for your module.
-You have import it with `forRoot` in any module where you want to provide `CgBusyDefaults`. 
+You have to import it with `forRoot` in any module where you want to provide `CgBusyDefaults`. 
 Usually you do that in your root module (`app.module`).
 If you never import it with `forRoot` `CgBusyDefaults` will always be `undefined`.
 `forRoot` takes optional `CgBusyOptions` as parameter. For every omitted option in the supplied `CgBusyOptions` the libraries default value will be used.

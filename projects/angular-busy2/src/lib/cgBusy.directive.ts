@@ -1,5 +1,4 @@
 import {
-  ComponentFactoryResolver,
   ComponentRef,
   Directive,
   ElementRef,
@@ -30,13 +29,11 @@ export class CgBusyDirective implements OnChanges, OnDestroy {
   componentRef: ComponentRef<CgBusyComponent>;
 
   constructor(private viewContainer: ViewContainerRef, private defaultOptions: CgBusyDefaults,
-              private renderer: Renderer2,
-              private componentFactoryResolver: ComponentFactoryResolver, private el: ElementRef) {
+              private renderer: Renderer2, private el: ElementRef) {
     this.$options = {...this.defaultOptions};
     this.$promise = [];
     this.renderer.setStyle(this.el.nativeElement.parentNode, 'position', 'relative');
-    const componentFactory = this.componentFactoryResolver.resolveComponentFactory(CgBusyComponent);
-    this.componentRef = this.viewContainer.createComponent(componentFactory);
+    this.componentRef = this.viewContainer.createComponent(CgBusyComponent);
     this.tracker = new CgBusyService();
     this.tracker.detectChanges = () => this.componentRef.changeDetectorRef.detectChanges();
     this.componentRef.instance.tracker = this.tracker;

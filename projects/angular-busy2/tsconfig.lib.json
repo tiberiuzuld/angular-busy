@@ -4,7 +4,6 @@
   "compilerOptions": {
     "outDir": "../../out-tsc/lib",
     "declarationMap": true,
-    "target": "es2017",
     "module": "es2020",
     "moduleResolution": "node",
     "declaration": true,
@@ -13,11 +12,7 @@
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "importHelpers": true,
-    "types": [],
-    "lib": [
-      "dom",
-      "es2018"
-    ]
+    "types": []
   },
   "exclude": [
     "src/test.ts",
