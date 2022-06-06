@@ -1,8 +1,6 @@
 # angular-busy2 [Live Demo](https://tiberiuzuld.github.io/angular-busy)
 
 [![npm version](https://badge.fury.io/js/angular-busy2.svg)](https://badge.fury.io/js/angular-busy2)
-[![dependencies Status](https://david-dm.org/tiberiuzuld/angular-busy2/status.svg)](https://david-dm.org/tiberiuzuld/angular-busy2)
-[![devDependencies Status](https://david-dm.org/tiberiuzuld/angular-busy2/dev-status.svg)](https://david-dm.org/tiberiuzuld/angular-busy2?type=dev)
 ![Node CI](https://github.com/tiberiuzuld/angular-busy/workflows/Node%20CI/badge.svg)
 [![downloads](https://img.shields.io/npm/dm/angular-busy2.svg)](https://www.npmjs.com/package/angular-busy2)
 [![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.paypal.me/tiberiuzuld)

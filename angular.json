@@ -156,9 +156,10 @@
       }
     }
   },
-  "defaultProject": "angular-busy2-app",
   "cli": {
     "analytics": "1f4c9dbf-755c-4ca9-a896-da7d97faf505",
-    "defaultCollection": "@angular-eslint/schematics"
+    "schematicCollections": [
+      "@angular-eslint/schematics"
+    ]
   }
 }
