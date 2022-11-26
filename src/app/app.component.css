@@ -2,10 +2,6 @@ mat-grid-list {
   min-width: 400px;
 }
 
-mat-grid-list mat-grid-tile figure {
-  justify-content: flex-start;
-}
-
 .custom-template {
   background: url('../assets/finalfantasy.gif') no-repeat 50% 20px;
   width: 100%;

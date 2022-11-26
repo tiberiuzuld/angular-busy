@@ -1,12 +1,33 @@
-import {ChangeDetectionStrategy, Component, OnInit} from '@angular/core';
-import {HttpClient} from '@angular/common/http';
-import {Observable, Subscription} from 'rxjs';
+import { NgForOf } from '@angular/common';
+import { HttpClient } from '@angular/common/http';
+import { ChangeDetectionStrategy, Component, OnInit } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { MatButtonModule } from '@angular/material/button';
+import { MatCheckboxModule } from '@angular/material/checkbox';
+import { MatGridListModule } from '@angular/material/grid-list';
+import { MatInputModule } from '@angular/material/input';
+import { MatSelectModule } from '@angular/material/select';
+import { CgBusyDirective } from 'angular-busy2';
+import { Observable, Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-cg-busy',
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.css'],
-  changeDetection: ChangeDetectionStrategy.OnPush
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  standalone: true,
+  imports: [
+    FormsModule,
+    NgForOf,
+
+    MatButtonModule,
+    MatCheckboxModule,
+    MatGridListModule,
+    MatInputModule,
+    MatSelectModule,
+
+    CgBusyDirective
+  ]
 })
 export class AppComponent implements OnInit {
   delay: number;

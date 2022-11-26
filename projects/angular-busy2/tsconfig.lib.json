@@ -4,7 +4,7 @@
   "compilerOptions": {
     "outDir": "../../out-tsc/lib",
     "declarationMap": true,
-    "module": "es2020",
+    "module": "ES2022",
     "moduleResolution": "node",
     "declaration": true,
     "sourceMap": true,
@@ -15,7 +15,6 @@
     "types": []
   },
   "exclude": [
-    "src/test.ts",
     "**/*.spec.ts"
   ]
 }

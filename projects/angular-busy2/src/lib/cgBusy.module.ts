@@ -1,23 +1,14 @@
-import {CommonModule} from '@angular/common';
-import {ModuleWithProviders, NgModule} from '@angular/core';
-import {CgBusyDirective} from './cgBusy.directive';
-import {BUSY_OPTIONS, CgBusyDefaults} from './cgBusyDefaults.service';
-import {CgBusyComponent} from './cgBusy.component';
-import {CgBusyOptions} from './cgBusy.interface';
+import { ModuleWithProviders, NgModule } from '@angular/core';
+import { CgBusyDirective } from './cgBusy.directive';
+import { CgBusyOptions } from './cgBusy.interface';
+import { BUSY_OPTIONS, CgBusyDefaults } from './cgBusyDefaults.service';
 
 export function cgBusyDefaultsFactory(busyOptions?: CgBusyOptions): CgBusyDefaults {
   return new CgBusyDefaults(busyOptions);
 }
 
-
 @NgModule({
-  declarations: [
-    CgBusyDirective,
-    CgBusyComponent
-  ],
-  imports: [
-    CommonModule
-  ],
+  imports: [CgBusyDirective],
   exports: [CgBusyDirective]
 })
 export class CgBusyModule {

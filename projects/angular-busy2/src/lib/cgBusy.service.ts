@@ -1,4 +1,4 @@
-import {Observable, Subscription} from 'rxjs';
+import { Observable, Subscription } from 'rxjs';
 
 export interface TrackerOptions {
   minDuration: number;
@@ -66,7 +66,7 @@ export class CgBusyService {
     }
 
     if (options.delay) {
-      this.delayPromise = setTimeout(() => {
+      this.delayPromise = window.setTimeout(() => {
         this.delayPromise = null;
         if (this.detectChanges) {
           this.detectChanges();
@@ -80,7 +80,7 @@ export class CgBusyService {
 
   createMinDuration(options: TrackerOptions): void {
     if (options.minDuration) {
-      this.durationPromise = setTimeout(() => {
+      this.durationPromise = window.setTimeout(() => {
         this.durationPromise = null;
         if (this.detectChanges) {
           this.detectChanges();
