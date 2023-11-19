@@ -2,11 +2,11 @@
 {
   "compileOnSave": false,
   "compilerOptions": {
-    "baseUrl": "./",
     "outDir": "./dist/out-tsc",
     "forceConsistentCasingInFileNames": true,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
+    "esModuleInterop": true,
     "sourceMap": true,
     "declaration": false,
     "emitDecoratorMetadata": true,
@@ -21,9 +21,8 @@
     ],
     "paths": {
       "angular-busy2": [
-        "dist/angular-busy2/angular-busy2",
-        "dist/angular-busy2",
-        "projects/angular-busy2/src/public_api.ts"
+        "./dist/angular-busy2",
+        "./projects/angular-busy2/src/public_api.ts"
       ]
     },
     "useDefineForClassFields": false
