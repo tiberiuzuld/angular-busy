@@ -15,7 +15,7 @@ import { CgBusyOptions } from './cgBusy.interface';
 import { CgBusyService } from './cgBusy.service';
 import { CgBusyDefaults } from './cgBusyDefaults.service';
 
-@Directive({selector: '[cgBusy]', standalone: true})
+@Directive({selector: '[cgBusy]', standalone: true, exportAs: 'cgBusy'})
 export class CgBusyDirective implements OnChanges, OnDestroy {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   @Input() cgBusy: boolean | number | Promise<any> | Subscription | Observable<any> | (Promise<any> | Subscription | Observable<any>)[];
