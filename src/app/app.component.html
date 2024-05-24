@@ -20,8 +20,9 @@
       <mat-checkbox [(ngModel)]="showCustomTemplate" name="customTemplate">Show Custom Template</mat-checkbox>
       <mat-form-field>
         <mat-select id="promiseType" [(ngModel)]="promiseType" name="promiseType" placeholder="Promise type">
-          <mat-option *ngFor="let promiseType of promiseTypes" [value]="promiseType"
-                      [innerText]="promiseType.label"></mat-option>
+          @for (promiseType of promiseTypes; track promiseType) {
+            <mat-option [value]="promiseType">{{promiseType.label}}</mat-option>
+          }
         </mat-select>
       </mat-form-field>
       <div class="layout-row layout-align-end-center">

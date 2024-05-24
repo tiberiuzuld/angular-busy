@@ -1,4 +1,3 @@
-import { NgForOf } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -13,21 +12,18 @@ import { Observable, Subscription } from 'rxjs';
 @Component({
   selector: 'app-cg-busy',
   templateUrl: './app.component.html',
-  styleUrls: ['./app.component.css'],
+  styleUrl: './app.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   standalone: true,
   imports: [
     FormsModule,
-    NgForOf,
-
     MatButtonModule,
     MatCheckboxModule,
     MatGridListModule,
     MatInputModule,
     MatSelectModule,
-
     CgBusyDirective
-  ]
+]
 })
 export class AppComponent implements OnInit {
   delay: number;
