@@ -1,4 +1,4 @@
-import { Observable, Subscription } from 'rxjs';
+import {finalize, Observable, Subscription} from 'rxjs';
 
 export interface TrackerOptions {
   minDuration: number;
@@ -33,15 +33,7 @@ export class CgBusyService {
     } else if (promiseThing.then) {
       promiseThing.then(callback, callback);
     } else if (promiseThing instanceof Observable) {
-      let subscription: Subscription;
-      const cc = () => {
-        if (subscription) {
-          subscription.unsubscribe();
-        }
-        callback();
-      };
-      subscription = promiseThing.subscribe({error: cc, complete: cc});
-      this.subscriptions.push(subscription);
+      promiseThing.pipe(finalize(callback));
     } else if (promiseThing instanceof Subscription) {
       promiseThing.add(callback);
     } else {
@@ -131,10 +123,6 @@ export class CgBusyService {
       this.durationPromise = null;
     }
     this.promises = [];
-    this.subscriptions.forEach((subscription) => {
-      subscription.unsubscribe();
-    });
-    this.subscriptions = [];
     this.detectChanges = null;
   }
 }
