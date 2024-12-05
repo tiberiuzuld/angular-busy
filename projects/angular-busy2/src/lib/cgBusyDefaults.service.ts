@@ -1,5 +1,5 @@
 import {Inject, Injectable, InjectionToken, TemplateRef} from '@angular/core';
-import {CgBusyOptions} from './cgBusy.interface';
+import type {CgBusyOptions} from './cgBusy.interface';
 
 export const BUSY_OPTIONS = new InjectionToken<CgBusyOptions>('BUSY_OPTIONS');
 

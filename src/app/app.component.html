@@ -7,19 +7,22 @@
     <form class="flex layout-column" #demoForm="ngForm">
       <label class="mat-headline">Demo Options</label>
       <mat-form-field>
-        <input matInput type="number" name="delayInput" required min="0" [(ngModel)]="delay" placeholder="Delay (ms)">
+        <mat-label>Delay (ms)</mat-label>
+        <input matInput type="number" name="delayInput" required min="0" [(ngModel)]="delay">
       </mat-form-field>
       <mat-form-field>
-        <input matInput type="number" name="durationInput" required min="0" [(ngModel)]="minDuration"
-               placeholder="Min Duration (ms)">
+        <mat-label>Min Duration (ms)</mat-label>
+        <input matInput type="number" name="durationInput" required min="0" [(ngModel)]="minDuration">
       </mat-form-field>
       <mat-form-field>
-        <input matInput type="text" name="message" [(ngModel)]="message" placeholder="Message">
+        <mat-label>Message</mat-label>
+        <input matInput type="text" name="message" [(ngModel)]="message">
       </mat-form-field>
       <mat-checkbox [(ngModel)]="backdrop" name="backdrop">Show Backdrop</mat-checkbox>
       <mat-checkbox [(ngModel)]="showCustomTemplate" name="customTemplate">Show Custom Template</mat-checkbox>
       <mat-form-field>
-        <mat-select id="promiseType" [(ngModel)]="promiseType" name="promiseType" placeholder="Promise type">
+        <mat-label>Promise type</mat-label>
+        <mat-select id="promiseType" [(ngModel)]="promiseType" name="promiseType">
           @for (promiseType of promiseTypes; track promiseType) {
             <mat-option [value]="promiseType">{{promiseType.label}}</mat-option>
           }

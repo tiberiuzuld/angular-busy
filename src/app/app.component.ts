@@ -1,20 +1,19 @@
-import { HttpClient } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, OnInit } from '@angular/core';
-import { FormsModule } from '@angular/forms';
-import { MatButtonModule } from '@angular/material/button';
-import { MatCheckboxModule } from '@angular/material/checkbox';
-import { MatGridListModule } from '@angular/material/grid-list';
-import { MatInputModule } from '@angular/material/input';
-import { MatSelectModule } from '@angular/material/select';
-import { CgBusyDirective } from 'angular-busy2';
-import { Observable, Subscription } from 'rxjs';
+import {HttpClient} from '@angular/common/http';
+import {ChangeDetectionStrategy, Component, OnInit} from '@angular/core';
+import {FormsModule} from '@angular/forms';
+import {MatButtonModule} from '@angular/material/button';
+import {MatCheckboxModule} from '@angular/material/checkbox';
+import {MatGridListModule} from '@angular/material/grid-list';
+import {MatInputModule} from '@angular/material/input';
+import {MatSelectModule} from '@angular/material/select';
+import {CgBusyDirective} from 'angular-busy2';
+import {Observable, Subscription} from 'rxjs';
 
 @Component({
   selector: 'app-cg-busy',
   templateUrl: './app.component.html',
   styleUrl: './app.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  standalone: true,
   imports: [
     FormsModule,
     MatButtonModule,
@@ -23,7 +22,7 @@ import { Observable, Subscription } from 'rxjs';
     MatInputModule,
     MatSelectModule,
     CgBusyDirective
-]
+  ]
 })
 export class AppComponent implements OnInit {
   delay: number;
@@ -35,9 +34,9 @@ export class AppComponent implements OnInit {
   promise: any;
   templateUrl: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  promiseTypes: { id: number, label: string, value: any }[];
+  promiseTypes: {id: number, label: string, value: any}[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  promiseType: { id: number, label: string, value: any };
+  promiseType: {id: number, label: string, value: any};
 
   constructor(private http: HttpClient) {
     this.showCustomTemplate = false;

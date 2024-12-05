@@ -1,19 +1,9 @@
-import {
-  ComponentRef,
-  Directive,
-  ElementRef,
-  Input,
-  OnChanges,
-  OnDestroy,
-  Renderer2,
-  SimpleChanges,
-  ViewContainerRef
-} from '@angular/core';
-import { Observable, Subscription } from 'rxjs';
-import { CgBusyComponent } from './cgBusy.component';
-import { CgBusyOptions } from './cgBusy.interface';
-import { CgBusyService } from './cgBusy.service';
-import { CgBusyDefaults } from './cgBusyDefaults.service';
+import {ComponentRef, Directive, ElementRef, Input, OnChanges, OnDestroy, Renderer2, SimpleChanges, ViewContainerRef} from '@angular/core';
+import {Observable, Subscription} from 'rxjs';
+import {CgBusyComponent} from './cgBusy.component';
+import type {CgBusyOptions} from './cgBusy.interface';
+import {CgBusyService} from './cgBusy.service';
+import {CgBusyDefaults} from './cgBusyDefaults.service';
 
 @Directive({selector: '[cgBusy]', standalone: true, exportAs: 'cgBusy'})
 export class CgBusyDirective implements OnChanges, OnDestroy {
