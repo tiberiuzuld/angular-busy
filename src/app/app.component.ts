@@ -1,5 +1,5 @@
 import {HttpClient} from '@angular/common/http';
-import {ChangeDetectionStrategy, Component, OnInit} from '@angular/core';
+import {ChangeDetectionStrategy, Component, OnInit, Signal, signal} from '@angular/core';
 import {FormsModule} from '@angular/forms';
 import {MatButtonModule} from '@angular/material/button';
 import {MatCheckboxModule} from '@angular/material/checkbox';
@@ -54,6 +54,7 @@ export class AppComponent implements OnInit {
       {id: 0, label: 'Promise', value: this.getHttp.bind(this)},
       {id: 1, label: 'Observable', value: this.getHttpObserver.bind(this)},
       {id: 1, label: 'Subscription', value: this.getHttpSubscription.bind(this)},
+      {id: 5, label: 'Signal', value: this.getSignal.bind(this)},
       {id: 2, label: 'Number', value: 1},
       {id: 3, label: 'Number `falsy`', value: 0},
       {id: 4, label: 'Boolean', value: true},
@@ -76,6 +77,14 @@ export class AppComponent implements OnInit {
   getHttpSubscription(): Subscription {
     return this.http.get('https://httpbin.org/delay/3').subscribe(() => {
     });
+  }
+
+  getSignal(): Signal<any> {
+    const s = signal(0);
+    setTimeout(() => {
+      s.set(1);
+    }, 3000);
+    return s;
   }
 
   demo(): void {

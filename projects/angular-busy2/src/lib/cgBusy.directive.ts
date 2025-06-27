@@ -1,4 +1,4 @@
-import {ComponentRef, Directive, ElementRef, Input, OnChanges, OnDestroy, Renderer2, SimpleChanges, ViewContainerRef} from '@angular/core';
+import {ComponentRef, Directive, ElementRef, Input, OnChanges, OnDestroy, Renderer2, Signal, SimpleChanges, ViewContainerRef} from '@angular/core';
 import {Observable, Subscription} from 'rxjs';
 import {CgBusyComponent} from './cgBusy.component';
 import type {CgBusyOptions} from './cgBusy.interface';
@@ -8,14 +8,14 @@ import {CgBusyDefaults} from './cgBusyDefaults.service';
 @Directive({selector: '[cgBusy]', standalone: true, exportAs: 'cgBusy'})
 export class CgBusyDirective implements OnChanges, OnDestroy {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  @Input() cgBusy: boolean | number | Promise<any> | Subscription | Observable<any> | (Promise<any> | Subscription | Observable<any>)[];
+  @Input() cgBusy: boolean | number | Promise<any> | Subscription | Observable<any> | (Promise<any> | Subscription | Observable<any> | Signal<any>)[];
   @Input() cgBusyConfig: CgBusyOptions;
   tracker: CgBusyService;
   fakePromise: Promise<void>;
   fakePromiseResolve: () => void;
   $options: CgBusyOptions;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  $promise: (Promise<any> | Subscription | Observable<any>)[];
+  $promise: (Promise<any> | Subscription | Observable<any> | Signal<any>)[];
   componentRef: ComponentRef<CgBusyComponent>;
 
   constructor(private viewContainer: ViewContainerRef, private defaultOptions: CgBusyDefaults,

@@ -1,3 +1,4 @@
+import {effect, inject, Injector, isSignal} from '@angular/core';
 import {finalize, Observable, Subscription} from 'rxjs';
 
 export interface TrackerOptions {
@@ -15,6 +16,7 @@ export class CgBusyService {
   durationPromise: number;
   minDuration: number;
   detectChanges: () => void | null;
+  private injector = inject(Injector);
 
   constructor() {
     this.promises = [];
@@ -23,7 +25,7 @@ export class CgBusyService {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   static isPromise(promiseThing: PromiseLike<any>): boolean {
-    return promiseThing && (promiseThing instanceof Promise || promiseThing instanceof Observable || promiseThing instanceof Subscription);
+    return promiseThing && (promiseThing instanceof Promise || promiseThing instanceof Observable || promiseThing instanceof Subscription || isSignal(promiseThing));
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -36,6 +38,18 @@ export class CgBusyService {
       promiseThing.pipe(finalize(callback));
     } else if (promiseThing instanceof Subscription) {
       promiseThing.add(callback);
+    } else if (isSignal(promiseThing)) {
+      let init = true;
+      const effectRef = effect(() => {
+        promiseThing();
+        // ignore initial value;
+        if (init) {
+          init = false;
+        } else {
+          callback();
+          effectRef.destroy();
+        }
+      }, {injector: this.injector});
     } else {
       throw new Error('cgBusy expects a Promise ,an Observable, a Subscription, a number or a boolean');
     }
@@ -85,7 +99,7 @@ export class CgBusyService {
   addPromiseLikeThing(promise: any): void {
 
     if (!CgBusyService.isPromise(promise)) {
-      throw new Error('cgBusy expects a Promise ,an Observable, a Subscription, a number or a boolean');
+      throw new Error('cgBusy expects a Promise ,an Observable, a Subscription, a Signal, a number or a boolean');
     }
 
     if (this.promises.indexOf(promise) !== -1) {
