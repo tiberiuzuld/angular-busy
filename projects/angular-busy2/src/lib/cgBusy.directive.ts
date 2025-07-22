@@ -8,7 +8,7 @@ import {CgBusyDefaults} from './cgBusyDefaults.service';
 @Directive({selector: '[cgBusy]', standalone: true, exportAs: 'cgBusy'})
 export class CgBusyDirective implements OnChanges, OnDestroy {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  @Input() cgBusy: boolean | number | Promise<any> | Subscription | Observable<any> | (Promise<any> | Subscription | Observable<any> | Signal<any>)[];
+  @Input() cgBusy: boolean | number | Promise<any> | Subscription | Observable<any> | Signal<any> | (Promise<any> | Subscription | Observable<any> | Signal<any>)[];
   @Input() cgBusyConfig: CgBusyOptions;
   tracker: CgBusyService;
   fakePromise: Promise<void>;

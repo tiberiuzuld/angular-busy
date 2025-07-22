@@ -41,9 +41,9 @@ export class CgBusyService {
     } else if (isSignal(promiseThing)) {
       let init = true;
       const effectRef = effect(() => {
-        promiseThing();
-        // ignore initial value;
-        if (init) {
+        const v = promiseThing();
+        // ignore initial value if is undefined;
+        if (init && v === undefined) {
           init = false;
         } else {
           callback();

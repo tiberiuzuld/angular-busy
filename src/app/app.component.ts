@@ -80,7 +80,7 @@ export class AppComponent implements OnInit {
   }
 
   getSignal(): Signal<any> {
-    const s = signal(0);
+    const s = signal<number | undefined>(undefined);
     setTimeout(() => {
       s.set(1);
     }, 3000);
