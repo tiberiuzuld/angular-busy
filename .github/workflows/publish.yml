@@ -24,7 +24,7 @@ jobs:
       - name: Update npm
         run: npm install -g npm@latest
       - run: npm ci --legacy-peer-deps
-      - run: npm run build-lib
+      - run: npm run build-npm
       - name: Publish package
         working-directory: ./dist/angular-busy2
         run: npm publish
