@@ -66,7 +66,7 @@ bootstrapApplication(AppComponent, {
 
 ## Options
 
-The `[cgBusy]` directive expects any Observable, Subscription, Promise, Boolean, Number and optional `[cgBusyConfig]`
+The `[cgBusy]` directive expects any Signal, Observable, Subscription, Promise, Boolean, Number and optional `[cgBusyConfig]`
 configuration object.
 
 In other words. You may do this:
