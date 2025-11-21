@@ -7,7 +7,7 @@ import {MatGridListModule} from '@angular/material/grid-list';
 import {MatInputModule} from '@angular/material/input';
 import {MatSelectModule} from '@angular/material/select';
 import {CgBusyDirective} from 'angular-busy2';
-import {Observable, Subscription} from 'rxjs';
+import {firstValueFrom, Observable, Subscription} from 'rxjs';
 
 @Component({
   selector: 'app-cg-busy',
@@ -55,6 +55,7 @@ export class AppComponent implements OnInit {
       {id: 1, label: 'Observable', value: this.getHttpObserver.bind(this)},
       {id: 1, label: 'Subscription', value: this.getHttpSubscription.bind(this)},
       {id: 5, label: 'Signal', value: this.getSignal.bind(this)},
+      {id: 5, label: 'Signal Delayed', value: this.getSignalDelay.bind(this)},
       {id: 2, label: 'Number', value: 1},
       {id: 3, label: 'Number `falsy`', value: 0},
       {id: 4, label: 'Boolean', value: true},
@@ -66,7 +67,7 @@ export class AppComponent implements OnInit {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getHttp(): Promise<any> {
-    return this.http.get('https://httpbin.org/delay/3').toPromise();
+    return firstValueFrom(this.http.get('https://httpbin.org/delay/3'));
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -80,10 +81,21 @@ export class AppComponent implements OnInit {
   }
 
   getSignal(): Signal<any> {
-    const s = signal<number | undefined>(undefined);
+    const s = signal<boolean>(true);
     setTimeout(() => {
-      s.set(1);
+      s.set(false);
     }, 3000);
+    return s;
+  }
+
+  getSignalDelay(): Signal<any> {
+    const s = signal<boolean>(false);
+    setTimeout(() => {
+      s.set(true);
+    }, 3000);
+    setTimeout(() => {
+      s.set(false);
+    }, 6000);
     return s;
   }
 

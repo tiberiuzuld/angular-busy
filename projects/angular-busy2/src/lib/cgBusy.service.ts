@@ -1,4 +1,4 @@
-import {effect, inject, Injector, isSignal} from '@angular/core';
+import {effect, inject, Injector, isSignal, untracked} from '@angular/core';
 import {finalize, Observable, Subscription} from 'rxjs';
 
 export interface TrackerOptions {
@@ -29,7 +29,7 @@ export class CgBusyService {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  callThen(promiseThing: any, callback: () => void): void {
+  callThen(promiseThing: any, callback: (show?: boolean) => void): void {
     if (promiseThing.finally) {
       promiseThing.finally(callback);
     } else if (promiseThing.then) {
@@ -39,16 +39,9 @@ export class CgBusyService {
     } else if (promiseThing instanceof Subscription) {
       promiseThing.add(callback);
     } else if (isSignal(promiseThing)) {
-      let init = true;
-      const effectRef = effect(() => {
+      effect(() => {
         const v = promiseThing();
-        // ignore initial value if is undefined;
-        if (init && v === undefined) {
-          init = false;
-        } else {
-          callback();
-          effectRef.destroy();
-        }
+        untracked(() => callback(!!v));
       }, {injector: this.injector});
     } else {
       throw new Error('cgBusy expects a Promise ,an Observable, a Subscription, a number or a boolean');
@@ -107,12 +100,14 @@ export class CgBusyService {
     }
     this.promises.push(promise);
 
-    this.callThen(promise, () => {
-      promise.$cgBusyFulfilled = true;
-      if (this.promises.indexOf(promise) === -1) {
-        return;
+    this.callThen(promise, (show: boolean = false) => {
+      if(show) {
+        promise.$cgBusyFulfilled = false;
+        !this.promises.includes(promise) && this.promises.push(promise);
+      } else {
+        promise.$cgBusyFulfilled = true;
+        this.promises.includes(promise) && this.promises.splice(this.promises.indexOf(promise), 1);
       }
-      this.promises.splice(this.promises.indexOf(promise), 1);
       if (this.delayPromise && this.promises.length === 0) {
         clearTimeout(this.delayPromise);
         this.delayPromise = null;
