@@ -5,7 +5,7 @@
 [![downloads](https://img.shields.io/npm/dm/angular-busy2.svg)](https://www.npmjs.com/package/angular-busy2)
 [![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.paypal.me/tiberiuzuld)
 
-> Show busy/loading indicators on Observable, Subscription, Promise, Boolean, Number
+> Show busy/loading indicators on Signal, Observable, Subscription, Promise, Boolean, Number
 
 ### For [AngularJS 1 branch 1.x](https://github.com/tiberiuzuld/angular-busy/tree/1.x)
 
@@ -84,7 +84,7 @@ or this:
      [cgBusyConfig]="{templateRef: customTemplate, message:message, backdrop:backdrop, delay:delay, minDuration:minDuration}"></div>
 ```
 
-* `promise` - Required. The promise/Observables (or array of promises/Observables) that will cause the busy indicator to
+* `promise` - Required. The Signal/promise/Observables (or array of Signal/promises/Observables) that will cause the busy indicator to
   show. Also supports boolean and numbers (truthy values will show loading...)
 * `message` - Optional. Defaults to 'Please Wait...'. The message to show in the indicator. This value may be updated
   while the promise is active. The indicator will reflect the updated values as they're changed.
