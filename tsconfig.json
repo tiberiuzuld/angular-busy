@@ -3,6 +3,7 @@
 {
   "compileOnSave": false,
   "compilerOptions": {
+    "esModuleInterop": true,
     "noImplicitOverride": true,
     "forceConsistentCasingInFileNames": true,
     "noImplicitReturns": true,
@@ -12,6 +13,7 @@
     "declaration": false,
     "experimentalDecorators": true,
     "importHelpers": true,
+    "moduleResolution": "bundler",
     "target": "ES2022",
     "module": "preserve",
     "paths": {
@@ -24,7 +26,6 @@
   "angularCompilerOptions": {
     "strictInjectionParameters": true,
     "strictInputAccessModifiers": true,
-    "typeCheckHostBindings": true,
     "strictTemplates": true
   },
   "files": [],
