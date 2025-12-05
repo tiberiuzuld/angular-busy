@@ -1,12 +1,12 @@
-import {ComponentRef, Directive, ElementRef, Input, OnChanges, OnDestroy, Renderer2, Signal, SimpleChanges, ViewContainerRef} from '@angular/core';
+import {ComponentRef, Directive, ElementRef, Input, OnChanges, OnDestroy, OnInit, Renderer2, Signal, SimpleChanges, ViewContainerRef} from '@angular/core';
 import {Observable, Subscription} from 'rxjs';
 import {CgBusyComponent} from './cgBusy.component';
 import type {CgBusyOptions} from './cgBusy.interface';
 import {CgBusyService} from './cgBusy.service';
 import {CgBusyDefaults} from './cgBusyDefaults.service';
 
-@Directive({selector: '[cgBusy]', standalone: true, exportAs: 'cgBusy'})
-export class CgBusyDirective implements OnChanges, OnDestroy {
+@Directive({ selector: '[cgBusy]', standalone: true, exportAs: 'cgBusy' })
+export class CgBusyDirective implements OnInit, OnChanges, OnDestroy {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   @Input() cgBusy: boolean | number | Promise<any> | Subscription | Observable<any> | Signal<any> | (Promise<any> | Subscription | Observable<any> | Signal<any>)[];
   @Input() cgBusyConfig: CgBusyOptions;
@@ -20,14 +20,17 @@ export class CgBusyDirective implements OnChanges, OnDestroy {
 
   constructor(private viewContainer: ViewContainerRef, private defaultOptions: CgBusyDefaults,
               private renderer: Renderer2, private el: ElementRef) {
-    this.$options = {...this.defaultOptions};
+    this.$options = { ...this.defaultOptions };
     this.$promise = [];
-    this.renderer.setStyle(this.el.nativeElement.parentNode, 'position', 'relative');
     this.componentRef = this.viewContainer.createComponent(CgBusyComponent);
     this.tracker = new CgBusyService();
     this.tracker.detectChanges = () => this.componentRef.changeDetectorRef.detectChanges();
     this.componentRef.instance.tracker = this.tracker;
     this.componentRef.instance.options = this.$options;
+  }
+
+  ngOnInit(): void {
+    this.el.nativeElement?.parentNode && this.renderer.setStyle(this.el.nativeElement.parentNode, 'position', 'relative');
   }
 
   ngOnChanges(changes: SimpleChanges): void {
