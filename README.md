@@ -17,51 +17,14 @@ Install with npm.
 npm install angular-busy2 --save
 ```
 
-Add `CgBusyModule` as a module dependency for your module.
-
-You have to import it with `forRoot` in any module where you want to provide `CgBusyDefaults`.
-
-Usually you do that in your root module (`app.module`).
-
-If you never import it with `forRoot` `CgBusyDefaults` will always be `undefined`.
-
-`forRoot` takes optional `CgBusyOptions` as parameter.
-
-For every omitted option in the supplied `CgBusyOptions` the libraries default value will be used.
-
-```typescript
-import { CgBusyModule } from 'angular-busy2';
-
-@NgModule({
-  imports: [
-    CgBusyModule.forRoot({
-      backdrop: true
-    }) //import it with .forRoot in your root module. provide some optional Options.
-  ]
-})
-```
-
-In every shared module/sub module you should import `CgBusyModule` without `forRoot` unless you want to provide a
-different instance of `CgBusyDefaults`
-
-### Standalone import directive
+## Standalone import directive
 
 ```typescript
 import { CgBusyDirective } from 'angular-busy2';
 
 @Component({
-  standalone: true,
-  imports: [CgBusyDirective],
-  // ...
+  imports: [CgBusyDirective]
 })
-
-// main.ts if you bootstrap application
-bootstrapApplication(AppComponent, {
-  providers: [
-    importProvidersFrom(CgBusyModule.forRoot())
-    // ...
-  ]
-}).catch(err => console.log(err));
 ```
 
 ## Options
@@ -98,7 +61,25 @@ or this:
   sign/animation. Defaults to `undefined`. Typically only useful if you wish to apply different positioning to the
   animation.
 
-## Overriding Defaults
+## Overriding Defaults options via BUSY_OPTIONS
+For every omitted option in the supplied `CgBusyOptions` the libraries default value will be used.
+
+```typescript
+import { BUSY_OPTIONS, CgBusyOptions } from 'angular-busy2';
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    {
+      provide: BUSY_OPTIONS,
+      useValue: {
+        minDuration: 100
+      } as CgBusyOptions
+    }
+  ]
+};
+```
+
+## Overriding Defaults via service
 
 The default values for `message`, `backdrop`, `templateRef`, `delay`, and `minDuration` may all be overridden by
 overriding the `CgBusyDefaults`, like so:
@@ -106,16 +87,15 @@ overriding the `CgBusyDefaults`, like so:
 ```typescript
 import { CgBusyDefaults } from 'angular-busy2';
 
-class AppComponent {
-  @ViewChild('customTemplate')
-  private customTemplateTpl: TemplateRef<any>;
+class App {
+  private customTemplateTpl: TemplateRef<any> = viewChild.required('customTemplate');
 
   constructor(private busyDefaults: CgBusyDefaults) {
     this.busyDefaults.delay = 5000;
   }
 
   ngOnInit() {
-    this.busyDefaults.templateRef = this.customTemplateTpl;
+    this.busyDefaults.templateRef = this.customTemplateTpl();
   }
 }
 ```

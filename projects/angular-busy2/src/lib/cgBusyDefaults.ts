@@ -1,9 +1,18 @@
-import {Inject, Injectable, InjectionToken, TemplateRef} from '@angular/core';
-import type {CgBusyOptions} from './cgBusy.interface';
+import { inject, Injectable, InjectionToken, TemplateRef } from '@angular/core';
+
+export type CgBusyOptions = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  templateRef?: TemplateRef<any>;
+  message?: string;
+  wrapperClass?: string;
+  backdrop?: boolean;
+  delay?: number;
+  minDuration?: number;
+};
 
 export const BUSY_OPTIONS = new InjectionToken<CgBusyOptions>('BUSY_OPTIONS');
 
-@Injectable()
+@Injectable({ providedIn: 'root' })
 export class CgBusyDefaults implements CgBusyOptions {
   delay: number;
   minDuration: number;
@@ -13,8 +22,8 @@ export class CgBusyDefaults implements CgBusyOptions {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   templateRef: TemplateRef<any>;
 
-  constructor(@Inject(BUSY_OPTIONS) busyOptions?: CgBusyOptions) {
-
+  constructor() {
+    let busyOptions = inject<CgBusyOptions>(BUSY_OPTIONS, { optional: true });
     if (!busyOptions) {
       busyOptions = {};
     }

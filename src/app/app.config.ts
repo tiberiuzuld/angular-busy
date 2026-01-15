@@ -1,11 +1,17 @@
-import {provideHttpClient} from '@angular/common/http';
-import {ApplicationConfig, importProvidersFrom, provideBrowserGlobalErrorListeners} from '@angular/core';
-import {CgBusyModule} from 'angular-busy2';
+import { provideHttpClient } from '@angular/common/http';
+import { ApplicationConfig, provideBrowserGlobalErrorListeners, provideZonelessChangeDetection } from '@angular/core';
+import { BUSY_OPTIONS, CgBusyOptions } from 'angular-busy2';
 
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
+    provideZonelessChangeDetection(),
     provideHttpClient(),
-    importProvidersFrom(CgBusyModule.forRoot())
+    {
+      provide: BUSY_OPTIONS,
+      useValue: {
+        minDuration: 10000
+      } as CgBusyOptions
+    }
   ]
 };

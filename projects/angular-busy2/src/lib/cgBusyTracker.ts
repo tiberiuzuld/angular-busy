@@ -1,5 +1,5 @@
-import {effect, inject, Injector, isSignal, untracked} from '@angular/core';
-import {finalize, Observable, Subscription} from 'rxjs';
+import { effect, inject, Injector, isSignal, untracked } from '@angular/core';
+import { finalize, Observable, Subscription } from 'rxjs';
 
 export interface TrackerOptions {
   minDuration: number;
@@ -8,7 +8,7 @@ export interface TrackerOptions {
   promises: any[];
 }
 
-export class CgBusyService {
+export class CgBusyTracker {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   promises: any[];
   subscriptions: Subscription[];
@@ -25,7 +25,10 @@ export class CgBusyService {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   static isPromise(promiseThing: PromiseLike<any>): boolean {
-    return promiseThing && (promiseThing instanceof Promise || promiseThing instanceof Observable || promiseThing instanceof Subscription || isSignal(promiseThing));
+    return (
+      promiseThing &&
+      (promiseThing instanceof Promise || promiseThing instanceof Observable || promiseThing instanceof Subscription || isSignal(promiseThing))
+    );
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -39,10 +42,13 @@ export class CgBusyService {
     } else if (promiseThing instanceof Subscription) {
       promiseThing.add(callback);
     } else if (isSignal(promiseThing)) {
-      effect(() => {
-        const v = promiseThing();
-        untracked(() => callback(!!v));
-      }, {injector: this.injector});
+      effect(
+        () => {
+          const v = promiseThing();
+          untracked(() => callback(!!v));
+        },
+        { injector: this.injector }
+      );
     } else {
       throw new Error('cgBusy expects a Promise ,an Observable, a Subscription, a number or a boolean');
     }
@@ -52,7 +58,7 @@ export class CgBusyService {
     this.minDuration = options.minDuration;
 
     this.promises = [];
-    options.promises.forEach((p) => {
+    options.promises.forEach(p => {
       if (!p || p.$cgBusyFulfilled) {
         return;
       }
@@ -90,8 +96,7 @@ export class CgBusyService {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   addPromiseLikeThing(promise: any): void {
-
-    if (!CgBusyService.isPromise(promise)) {
+    if (!CgBusyTracker.isPromise(promise)) {
       throw new Error('cgBusy expects a Promise ,an Observable, a Subscription, a Signal, a number or a boolean');
     }
 
@@ -101,7 +106,7 @@ export class CgBusyService {
     this.promises.push(promise);
 
     this.callThen(promise, (show: boolean = false) => {
-      if(show) {
+      if (show) {
         promise.$cgBusyFulfilled = false;
         !this.promises.includes(promise) && this.promises.push(promise);
       } else {

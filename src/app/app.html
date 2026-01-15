@@ -8,15 +8,15 @@
       <label class="mat-headline">Demo Options</label>
       <mat-form-field>
         <mat-label>Delay (ms)</mat-label>
-        <input matInput type="number" name="delayInput" required min="0" [(ngModel)]="delay">
+        <input matInput type="number" name="delayInput" required min="0" [(ngModel)]="delay" />
       </mat-form-field>
       <mat-form-field>
         <mat-label>Min Duration (ms)</mat-label>
-        <input matInput type="number" name="durationInput" required min="0" [(ngModel)]="minDuration">
+        <input matInput type="number" name="durationInput" required min="0" [(ngModel)]="minDuration" />
       </mat-form-field>
       <mat-form-field>
         <mat-label>Message</mat-label>
-        <input matInput type="text" name="message" [(ngModel)]="message">
+        <input matInput type="text" name="message" [(ngModel)]="message" />
       </mat-form-field>
       <mat-checkbox [(ngModel)]="backdrop" name="backdrop">Show Backdrop</mat-checkbox>
       <mat-checkbox [(ngModel)]="showCustomTemplate" name="customTemplate">Show Custom Template</mat-checkbox>
@@ -24,20 +24,29 @@
         <mat-label>Promise type</mat-label>
         <mat-select id="promiseType" [(ngModel)]="promiseType" name="promiseType">
           @for (promiseType of promiseTypes; track promiseType) {
-            <mat-option [value]="promiseType">{{promiseType.label}}</mat-option>
+            <mat-option [value]="promiseType">{{ promiseType.label }}</mat-option>
           }
         </mat-select>
       </mat-form-field>
       <div class="layout-row layout-align-end-center">
-        <button type="submit" mat-raised-button [disabled]="!demoForm.form.valid" (click)="demo()">
-          Demo
-        </button>
+        <button type="submit" mat-raised-button [disabled]="!demoForm.form.valid" (click)="demo()">Demo</button>
       </div>
     </form>
 
     <div class="flex">
-      <mat-grid-list cols="4" rowHeight="40px" gutterSize="5" [cgBusy]="promise"
-                     [cgBusyConfig]="{templateRef: showCustomTemplate ? customTemplate: null,message:message,backdrop:backdrop,delay:delay,minDuration:minDuration}">
+      <mat-grid-list
+        cols="4"
+        rowHeight="40px"
+        gutterSize="5"
+        [cgBusy]="promise"
+        [cgBusyConfig]="{
+          templateRef: showCustomTemplate ? customTemplate : null,
+          message: message,
+          backdrop: backdrop,
+          delay: delay,
+          minDuration: minDuration
+        }"
+      >
         <mat-grid-tile>
           <b>#</b>
         </mat-grid-tile>
