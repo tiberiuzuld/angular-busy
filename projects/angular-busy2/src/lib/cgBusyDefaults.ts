@@ -2,7 +2,7 @@ import { inject, Injectable, InjectionToken, TemplateRef } from '@angular/core';
 
 export type CgBusyOptions = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  templateRef?: TemplateRef<any>;
+  templateRef?: TemplateRef<any> | undefined | null;
   message?: string;
   wrapperClass?: string;
   backdrop?: boolean;
@@ -20,7 +20,7 @@ export class CgBusyDefaults implements CgBusyOptions {
   message: string;
   wrapperClass: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  templateRef: TemplateRef<any>;
+  templateRef?: TemplateRef<any> | undefined | null;
 
   constructor() {
     let busyOptions = inject<CgBusyOptions>(BUSY_OPTIONS, { optional: true });

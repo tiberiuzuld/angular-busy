@@ -26,8 +26,8 @@ export class CgBusyDirective implements OnDestroy {
   >();
   cgBusyConfig = input<CgBusyOptions>();
   tracker: CgBusyTracker = new CgBusyTracker();
-  fakePromise: Promise<void>;
-  fakePromiseResolve: () => void;
+  fakePromise: Promise<void> | undefined;
+  fakePromiseResolve: (() => void) | undefined;
   $options = computed<CgBusyOptions>(() => {
     return {
       ...this.defaultOptions,
@@ -45,7 +45,6 @@ export class CgBusyDirective implements OnDestroy {
   constructor() {
     this.renderer.setStyle(this.el.nativeElement.parentNode, 'position', 'relative');
     this.componentRef = this.viewContainer.createComponent(CgBusy);
-    this.tracker.detectChanges = () => this.componentRef.changeDetectorRef.detectChanges();
     this.componentRef.setInput('tracker', this.tracker);
     effect(() => {
       this.componentRef.setInput('options', this.$options());
@@ -59,7 +58,7 @@ export class CgBusyDirective implements OnDestroy {
     });
     effect(() => {
       if (this.fakePromise) {
-        this.fakePromiseResolve();
+        this.fakePromiseResolve && this.fakePromiseResolve();
         this.fakePromise = undefined;
         this.fakePromiseResolve = undefined;
       }
@@ -90,9 +89,7 @@ export class CgBusyDirective implements OnDestroy {
 
   ngOnDestroy(): void {
     this.tracker.destroy();
-    delete this.tracker;
     this.componentRef.destroy();
-    delete this.componentRef;
     this.$promise = [];
     this.fakePromise = undefined;
     this.fakePromiseResolve = undefined;

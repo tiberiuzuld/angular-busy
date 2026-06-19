@@ -1,4 +1,4 @@
-import { effect, inject, Injector, isSignal, untracked } from '@angular/core';
+import { effect, inject, Injector, isSignal, signal, untracked } from '@angular/core';
 import { finalize, Observable, Subscription } from 'rxjs';
 
 export interface TrackerOptions {
@@ -12,10 +12,9 @@ export class CgBusyTracker {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   promises: any[];
   subscriptions: Subscription[];
-  delayPromise: number;
-  durationPromise: number;
-  minDuration: number;
-  detectChanges: () => void | null;
+  delayPromise: number | null = null;
+  durationPromise: number | null = null;
+  active = signal<boolean>(false);
   private injector = inject(Injector);
 
   constructor() {
@@ -55,8 +54,6 @@ export class CgBusyTracker {
   }
 
   reset(options: TrackerOptions): void {
-    this.minDuration = options.minDuration;
-
     this.promises = [];
     options.promises.forEach(p => {
       if (!p || p.$cgBusyFulfilled) {
@@ -73,9 +70,7 @@ export class CgBusyTracker {
     if (options.delay) {
       this.delayPromise = window.setTimeout(() => {
         this.delayPromise = null;
-        if (this.detectChanges) {
-          this.detectChanges();
-        }
+        this.updateActive();
         this.createMinDuration(options);
       }, options.delay);
     } else {
@@ -87,10 +82,10 @@ export class CgBusyTracker {
     if (options.minDuration) {
       this.durationPromise = window.setTimeout(() => {
         this.durationPromise = null;
-        if (this.detectChanges) {
-          this.detectChanges();
-        }
+        this.updateActive();
       }, options.minDuration);
+    } else {
+      this.updateActive();
     }
   }
 
@@ -117,14 +112,12 @@ export class CgBusyTracker {
         clearTimeout(this.delayPromise);
         this.delayPromise = null;
       }
-      if (this.detectChanges) {
-        this.detectChanges();
-      }
+      this.updateActive();
     });
   }
 
-  active(): boolean {
-    return !this.delayPromise && (!!this.durationPromise || this.promises.length > 0);
+  updateActive(): void {
+    this.active.set(!this.delayPromise && (!!this.durationPromise || this.promises.length > 0));
   }
 
   destroy(): void {
@@ -137,6 +130,5 @@ export class CgBusyTracker {
       this.durationPromise = null;
     }
     this.promises = [];
-    this.detectChanges = null;
   }
 }
