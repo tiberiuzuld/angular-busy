@@ -4,32 +4,38 @@
     <p>Show busy/loading indicators on any Observable, Subscription, Promise, Boolean, Number</p>
   </div>
   <div class="layout-column layout-gt-md-row layout-align-space-between flex">
-    <form class="flex layout-column" #demoForm="ngForm">
+    <form class="flex layout-column" [formRoot]="modelForm">
       <label class="mat-headline">Demo Options</label>
       <mat-form-field>
         <mat-label>Delay (ms)</mat-label>
-        <input matInput type="number" name="delayInput" required min="0" [(ngModel)]="delay" />
+        <input matInput type="number" [formField]="modelForm.delay" />
+        @for (error of modelForm.delay().errors(); track error) {
+          <mat-error>{{ error.message }}</mat-error>
+        }
       </mat-form-field>
       <mat-form-field>
         <mat-label>Min Duration (ms)</mat-label>
-        <input matInput type="number" name="durationInput" required min="0" [(ngModel)]="minDuration" />
+        <input matInput type="number" [formField]="modelForm.minDuration" />
+        @for (error of modelForm.minDuration().errors(); track error) {
+          <mat-error>{{ error.message }}</mat-error>
+        }
       </mat-form-field>
       <mat-form-field>
         <mat-label>Message</mat-label>
-        <input matInput type="text" name="message" [(ngModel)]="message" />
+        <input matInput type="text" [formField]="modelForm.message" />
       </mat-form-field>
-      <mat-checkbox [(ngModel)]="backdrop" name="backdrop">Show Backdrop</mat-checkbox>
-      <mat-checkbox [(ngModel)]="showCustomTemplate" name="customTemplate">Show Custom Template</mat-checkbox>
+      <mat-checkbox [formField]="modelForm.backdrop">Show Backdrop</mat-checkbox>
+      <mat-checkbox [formField]="modelForm.showCustomTemplate">Show Custom Template</mat-checkbox>
       <mat-form-field>
         <mat-label>Promise type</mat-label>
-        <mat-select id="promiseType" [(ngModel)]="promiseType" name="promiseType">
-          @for (promiseType of promiseTypes; track promiseType) {
+        <mat-select id="promiseType" [formField]="modelForm.promiseType">
+          @for (promiseType of promiseTypes; track promiseType.id) {
             <mat-option [value]="promiseType">{{ promiseType.label }}</mat-option>
           }
         </mat-select>
       </mat-form-field>
       <div class="layout-row layout-align-end-center">
-        <button type="submit" mat-raised-button [disabled]="!demoForm.form.valid" (click)="demo()">Demo</button>
+        <button type="submit" mat-raised-button [disabled]="!modelForm().valid()">Demo</button>
       </div>
     </form>
 
@@ -40,11 +46,11 @@
         gutterSize="5"
         [cgBusy]="promise"
         [cgBusyConfig]="{
-          templateRef: showCustomTemplate ? customTemplate : null,
-          message: message,
-          backdrop: backdrop,
-          delay: delay,
-          minDuration: minDuration
+          templateRef: modelForm.showCustomTemplate().value() ? customTemplate : null,
+          message: modelForm.message().value(),
+          backdrop: modelForm.backdrop().value(),
+          delay: modelForm.delay().value(),
+          minDuration: modelForm.minDuration().value()
         }"
       >
         <mat-grid-tile>

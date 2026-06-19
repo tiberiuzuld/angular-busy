@@ -1,30 +1,52 @@
 import { HttpClient } from '@angular/common/http';
-import { Component, Signal, signal } from '@angular/core';
-import { FormsModule } from '@angular/forms';
-import { MatButtonModule } from '@angular/material/button';
-import { MatCheckboxModule } from '@angular/material/checkbox';
-import { MatGridListModule } from '@angular/material/grid-list';
-import { MatInputModule } from '@angular/material/input';
-import { MatSelectModule } from '@angular/material/select';
+import { Component, inject, Signal, signal } from '@angular/core';
+import { form, FormField, FormRoot, min, required } from '@angular/forms/signals';
+import { MatButton } from '@angular/material/button';
+import { MatCheckbox } from '@angular/material/checkbox';
+import { MatGridList, MatGridTile } from '@angular/material/grid-list';
+import { MatError, MatFormField, MatInput, MatLabel } from '@angular/material/input';
+import { MatOption, MatSelect } from '@angular/material/select';
 import { CgBusyDirective } from 'angular-busy2';
 import { firstValueFrom, Observable, Subscription } from 'rxjs';
+
+type PromiseTypeValue = (() => Promise<any> | Subscription | Observable<any> | Signal<any>) | number | boolean;
+interface PromiseType {
+  id: number;
+  label: string;
+  value: PromiseTypeValue;
+}
+
+interface Model {
+  delay: number;
+  minDuration: number;
+  message: string;
+  backdrop: boolean;
+  showCustomTemplate: boolean;
+  promiseType: PromiseType;
+}
 
 @Component({
   selector: 'app-cg-busy',
   templateUrl: './app.html',
   styleUrl: './app.css',
-  imports: [FormsModule, MatButtonModule, MatCheckboxModule, MatGridListModule, MatInputModule, MatSelectModule, CgBusyDirective]
+  imports: [
+    CgBusyDirective,
+    FormField,
+    FormRoot,
+    MatButton,
+    MatCheckbox,
+    MatError,
+    MatFormField,
+    MatGridList,
+    MatGridTile,
+    MatInput,
+    MatLabel,
+    MatOption,
+    MatSelect
+  ]
 })
 export class App {
-  delay: number = 0;
-  minDuration: number = 0;
-  message: string = 'Please Wait...';
-  backdrop: boolean = true;
-  showCustomTemplate: boolean;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  promise: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  promiseTypes: { id: number; label: string; value: any }[] = [
+  promiseTypes: PromiseType[] = [
     { id: 0, label: 'Promise', value: this.getHttp.bind(this) },
     { id: 1, label: 'Observable', value: this.getHttpObserver.bind(this) },
     { id: 1, label: 'Subscription', value: this.getHttpSubscription.bind(this) },
@@ -35,12 +57,38 @@ export class App {
     { id: 4, label: 'Boolean', value: true },
     { id: 5, label: 'Boolean false', value: false }
   ];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  promiseType: { id: number; label: string; value: any } = this.promiseTypes[0];
+  model = signal<Model>({
+    delay: 0,
+    minDuration: 0,
+    message: 'Please Wait...',
+    backdrop: true,
+    showCustomTemplate: false,
+    promiseType: this.promiseTypes[0]
+  });
+  modelForm = form(
+    this.model,
+    schemaPath => {
+      required(schemaPath.delay, { message: 'Delay is required' });
+      required(schemaPath.minDuration, { message: 'MinDuration is required' });
+      min(schemaPath.delay, 0, { message: 'Minimum value for Delay is 0' });
+      min(schemaPath.minDuration, 0, { message: 'Minimum value for MinDuration is 0' });
+    },
+    {
+      submission: {
+        action: async () => {
+          const value = this.modelForm.promiseType().value().value;
+          if (typeof value === 'function') {
+            this.promise = value();
+          } else {
+            this.promise = value;
+          }
+        }
+      }
+    }
+  );
+  promise: Promise<any> | Subscription | Observable<any> | Signal<any> | number | boolean = false;
 
-  constructor(private http: HttpClient) {
-    this.showCustomTemplate = false;
-  }
+  private http = inject(HttpClient);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getHttp(): Promise<any> {
@@ -73,13 +121,5 @@ export class App {
       s.set(false);
     }, 6000);
     return s;
-  }
-
-  demo(): void {
-    if (typeof this.promiseType.value === 'function') {
-      this.promise = this.promiseType.value();
-    } else {
-      this.promise = this.promiseType.value;
-    }
   }
 }
