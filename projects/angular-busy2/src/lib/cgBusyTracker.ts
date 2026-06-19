@@ -76,6 +76,7 @@ export class CgBusyTracker {
     } else {
       this.createMinDuration(options);
     }
+    this.updateActive();
   }
 
   createMinDuration(options: TrackerOptions): void {
@@ -84,8 +85,6 @@ export class CgBusyTracker {
         this.durationPromise = null;
         this.updateActive();
       }, options.minDuration);
-    } else {
-      this.updateActive();
     }
   }
 
