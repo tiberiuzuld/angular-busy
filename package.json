@@ -1,6 +1,6 @@
 {
   "name": "angular-busy2",
-  "version": "24.0.0",
+  "version": "24.0.1",
   "license": "MIT",
   "scripts": {
     "ng": "ng",
@@ -9,7 +9,7 @@
     "test": "ng test",
     "lint": "ng lint",
     "build-demo": "ng build",
-    "build-npm": "ng build angular-busy2",
+    "build-npm": "ng build angular-busy2 && cp LICENSE dist/angular-busy2 && cp README.md dist/angular-busy2",
     "watch": "ng build --watch --configuration development",
     "deploy": "npm run build-npm && ng deploy"
   },
@@ -37,22 +37,22 @@
   ],
   "dependencies": {
     "@angular/cdk": "22.0.2",
-    "@angular/common": "22.0.2",
-    "@angular/compiler": "22.0.2",
-    "@angular/core": "22.0.2",
-    "@angular/forms": "22.0.2",
+    "@angular/common": "22.0.3",
+    "@angular/compiler": "22.0.3",
+    "@angular/core": "22.0.3",
+    "@angular/forms": "22.0.3",
     "@angular/material": "22.0.2",
-    "@angular/platform-browser": "22.0.2",
-    "@angular/router": "22.0.2",
+    "@angular/platform-browser": "22.0.3",
+    "@angular/router": "22.0.3",
     "rxjs": "7.8.2",
     "tslib": "2.8.1"
   },
   "devDependencies": {
-    "@angular/build": "22.0.3",
-    "@angular/cli": "22.0.3",
-    "@angular/compiler-cli": "22.0.2",
+    "@angular/build": "22.0.4",
+    "@angular/cli": "22.0.4",
+    "@angular/compiler-cli": "22.0.3",
     "@eslint/js": "10.0.1",
-    "@types/node": "25.9.3",
+    "@types/node": "26.0.1",
     "angular-cli-ghpages": "3.1.0",
     "angular-eslint": "22.0.0",
     "eslint": "10.5.0",
@@ -60,7 +60,7 @@
     "ng-packagr": "22.0.0",
     "prettier": "3.8.4",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.61.1",
+    "typescript-eslint": "8.62.0",
     "vitest": "4.1.9"
   }
 }
