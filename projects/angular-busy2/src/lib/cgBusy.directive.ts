@@ -26,8 +26,7 @@ export class CgBusyDirective implements OnDestroy {
   >();
   cgBusyConfig = input<CgBusyOptions>();
   tracker: CgBusyTracker = new CgBusyTracker();
-  fakePromise: Promise<void> | undefined;
-  fakePromiseResolve: (() => void) | undefined;
+  fakePromiseResolve: ((value: any) => void) | undefined;
   $options = computed<CgBusyOptions>(() => {
     return {
       ...this.defaultOptions,
@@ -57,20 +56,17 @@ export class CgBusyDirective implements OnDestroy {
       );
     });
     effect(() => {
-      if (this.fakePromise) {
-        this.fakePromiseResolve && this.fakePromiseResolve();
-        this.fakePromise = undefined;
+      if (this.fakePromiseResolve) {
+        this.fakePromiseResolve(undefined);
         this.fakePromiseResolve = undefined;
       }
       const cgBusy = this.cgBusy();
       if (Number.isFinite(cgBusy) || cgBusy === true || cgBusy === false) {
-        this.fakePromise = new Promise(resolve => {
-          this.fakePromiseResolve = resolve;
-          if (!cgBusy) {
-            resolve();
-          }
-        });
-        this.$promise = [this.fakePromise];
+        if (!cgBusy) {
+          this.$promise = [];
+        } else {
+          this.$promise = [new Promise(resolve => (this.fakePromiseResolve = resolve))];
+        }
       } else if (Array.isArray(cgBusy)) {
         this.$promise = cgBusy;
       } else {
@@ -91,7 +87,6 @@ export class CgBusyDirective implements OnDestroy {
     this.tracker.destroy();
     this.componentRef.destroy();
     this.$promise = [];
-    this.fakePromise = undefined;
     this.fakePromiseResolve = undefined;
   }
 }

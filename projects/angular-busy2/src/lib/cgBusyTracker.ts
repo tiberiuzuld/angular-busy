@@ -63,6 +63,7 @@ export class CgBusyTracker {
     });
 
     if (this.promises.length === 0) {
+      setTimeout(() => this.updateActive());
       // if we have no promises then don't do the delay or duration stuff
       return;
     }
@@ -76,7 +77,7 @@ export class CgBusyTracker {
     } else {
       this.createMinDuration(options);
     }
-    this.updateActive();
+    setTimeout(() => this.updateActive());
   }
 
   createMinDuration(options: TrackerOptions): void {
